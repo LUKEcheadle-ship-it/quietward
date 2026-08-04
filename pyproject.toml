@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "quietward"
+version = "0.4.0a1"
+description = "Offline-first, observation-only cybersecurity monitoring and threat triage"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [{name = "Luke Cheadle"}]
+dependencies = []
+
+[project.scripts]
+quietward = "quietward.console:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"quietward.model_artifacts" = ["*.json"]
