@@ -32,6 +32,12 @@ class PrivacyIdentityTests(unittest.TestCase):
             self.assertEqual(len(one.identify("root")), 32)
             self.assertTrue(PrivacyIdentity.DOMAIN.startswith(b"quietward-"))
 
+    def test_key_with_windows_text_eof_byte_loads_completely(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            key = b"a" * 16 + b"\x1a" + b"b" * 47
+            identity = PrivacyIdentity.load(self.key(Path(directory), key))
+            self.assertEqual(identity._key, key)
+
     def test_pre_rename_namespace_preserves_legacy_pseudonyms(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = self.key(Path(directory), b"l" * 32)
