@@ -36,7 +36,12 @@ class PrivacyIdentity:
             raise ValueError("unsupported privacy identity namespace") from exc
         if not path.is_absolute():
             raise ValueError("privacy identity key path must be absolute")
-        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+        flags = (
+            os.O_RDONLY
+            | getattr(os, "O_BINARY", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0)
+        )
         try:
             descriptor = os.open(path, flags)
         except OSError as exc:
