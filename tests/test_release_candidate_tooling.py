@@ -9,6 +9,8 @@ import unittest
 import zipfile
 from pathlib import Path
 
+from quietward import __version__
+
 ROOT = Path(__file__).resolve().parents[1]
 VERIFY_PATH = ROOT / "scripts" / "verify_release_bundle.py"
 SPEC = importlib.util.spec_from_file_location("verify_release_bundle", VERIFY_PATH)
@@ -20,8 +22,10 @@ SPEC.loader.exec_module(VERIFY)
 class ReleaseCandidateToolingTests(unittest.TestCase):
     def test_version_metadata_is_consistent(self) -> None:
         project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-        version = VERIFY.display_version(str(project["project"]["version"]))
+        package_version = str(project["project"]["version"])
+        version = VERIFY.display_version(package_version)
         self.assertEqual("quietward", project["project"]["name"])
+        self.assertEqual(package_version, __version__)
         self.assertIn(f"## {version}", (ROOT / "CHANGELOG.md").read_text(encoding="utf-8"))
         self.assertTrue((ROOT / "docs" / "releases" / f"v{version}.md").is_file())
 

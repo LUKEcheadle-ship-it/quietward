@@ -8,6 +8,7 @@
 - Format dashboard timestamps for people while retaining exact UTC values.
 - Translate allowlisted scoring reasons into plain language and retain escaped raw details.
 - Make manual and automatic refreshes observable, non-overlapping, and non-destructive on failure.
+- Correct the installed runtime version metadata to `0.4.0a2` and enforce consistency with project metadata in the release test suite.
 - macOS remains unsupported and not natively qualified; its platform gate is intentionally unchanged.
 
 All notable changes are documented here.
