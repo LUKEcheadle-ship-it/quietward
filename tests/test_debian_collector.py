@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import json
+import errno
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 from quietward.collectors.command import DOCKER_PS_COMMAND, JOURNAL_AUTH_COMMAND, PS_COMMAND, SS_COMMAND, CommandResult
 from quietward.collectors.debian import DebianCollectorConfig, DebianReadOnlyCollector
 from quietward.collectors.models import CollectorSnapshot, FileRecord, SocketRecord
+from quietward.collectors.files import observe_file
 from quietward.pipeline import SentinelPipeline
 
 
@@ -73,6 +76,16 @@ class DebianCollectorTests(unittest.TestCase):
         batch = collector.collect()
         self.assertEqual(batch.events, ())
         self.assertEqual(len(batch.snapshot.errors), 2)
+
+    def test_unreadable_sensitive_file_is_an_optional_permission_boundary(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            monitored = Path(directory) / "restricted"
+            monitored.write_text("private", encoding="utf-8")
+            denied = PermissionError(errno.EACCES, "Permission denied", str(monitored))
+            with patch("quietward.collectors.files.os.open", side_effect=denied):
+                record = observe_file(monitored)
+            self.assertIsNone(record.sha256)
+            self.assertIn("optional permission boundary", record.error or "")
 
 
 if __name__ == "__main__":

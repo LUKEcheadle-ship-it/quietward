@@ -24,6 +24,7 @@ REQUIRED = {
     "scripts/uninstall_windows.ps1",
     "scripts/qualify_windows.ps1",
     "scripts/public_release_audit.py",
+    "scripts/migrate_pre_rename_user_install.py",
 }
 FORBIDDEN_PARTS = {
     ".git",

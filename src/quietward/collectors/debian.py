@@ -33,6 +33,8 @@ class DebianCollectorConfig:
     max_persistence_entries: int = 500
     max_docker_inspects: int = 50
     privacy_identity_key_path: Path | None = None
+    privacy_identity_namespace: str = "quietward-v1"
+    data_identity_namespace: str = "quietward-v1"
 
     def __post_init__(self) -> None:
         if self.max_file_hash_bytes <= 0 or self.max_persistence_entries <= 0 or self.max_docker_inspects <= 0:
@@ -46,11 +48,16 @@ class DebianReadOnlyCollector:
     def __init__(self, config: DebianCollectorConfig | None = None, runner: CommandRunner | None = None, host_id: str | None = None) -> None:
         self.config = config or DebianCollectorConfig()
         self.runner = runner or ReadOnlyCommandRunner()
-        self.host_id = host_id or derive_host_id()
+        self.host_id = host_id or derive_host_id(
+            namespace=self.config.data_identity_namespace
+        )
         self.privacy_identity: PrivacyIdentity | None = None
         if (self.config.include_auth_journal or self.config.include_processes) and self.config.privacy_identity_key_path is not None:
             try:
-                self.privacy_identity = PrivacyIdentity.load(self.config.privacy_identity_key_path)
+                self.privacy_identity = PrivacyIdentity.load(
+                    self.config.privacy_identity_key_path,
+                    namespace=self.config.privacy_identity_namespace,
+                )
             except ValueError:
                 self.privacy_identity = None
 
@@ -88,12 +95,18 @@ class DebianReadOnlyCollector:
         if self.config.include_connections:
             result = self.runner.run(CONNECTIONS_COMMAND)
             if self._ok(result, "outbound connection inventory", errors):
-                connections = parse_connections_output(result.stdout)[:MAX_CONNECTION_RECORDS]
+                connections = parse_connections_output(
+                    result.stdout,
+                    namespace=self.config.data_identity_namespace,
+                )[:MAX_CONNECTION_RECORDS]
 
         if self.config.include_docker:
             result = self.runner.run(DOCKER_PS_COMMAND)
             if self._ok(result, "Docker inventory", errors, optional=True):
-                base = parse_docker_ps_output(result.stdout)
+                base = parse_docker_ps_output(
+                    result.stdout,
+                    namespace=self.config.data_identity_namespace,
+                )
                 ids = parse_docker_ps_ids(result.stdout)
                 enriched = []
                 for index, record in enumerate(base):
@@ -114,7 +127,10 @@ class DebianReadOnlyCollector:
 
         persistence = ()
         if self.config.include_persistence:
-            persistence, persistence_errors = observe_persistence(max_entries=self.config.max_persistence_entries)
+            persistence, persistence_errors = observe_persistence(
+                max_entries=self.config.max_persistence_entries,
+                namespace=self.config.data_identity_namespace,
+            )
             errors.extend(persistence_errors)
 
         snapshot = CollectorSnapshot(
@@ -134,7 +150,15 @@ class DebianReadOnlyCollector:
             result = self.runner.run(JOURNAL_AUTH_COMMAND)
             if self._ok(result, "SSH authentication journal", errors, optional=True):
                 if self.privacy_identity is not None:
-                    events.extend(self._auth_events(parse_auth_journal(result.stdout), observed_at))
+                    events.extend(
+                        self._auth_events(
+                            parse_auth_journal(
+                                result.stdout,
+                                namespace=self.config.data_identity_namespace,
+                            ),
+                            observed_at,
+                        )
+                    )
                 else:
                     errors.append("SSH authentication journal privacy identity unavailable")
 

@@ -51,7 +51,7 @@ def _read_text(path: Path, max_bytes: int) -> tuple[str | None, str | None]:
         return None, redact_error(str(exc))
 
 
-def _account_records(passwd_path: Path, group_path: Path, max_bytes: int) -> tuple[list[PersistenceRecord], list[str], list[Path]]:
+def _account_records(passwd_path: Path, group_path: Path, max_bytes: int, namespace: str) -> tuple[list[PersistenceRecord], list[str], list[Path]]:
     records: list[PersistenceRecord] = []
     errors: list[str] = []
     homes: list[Path] = []
@@ -84,7 +84,7 @@ def _account_records(passwd_path: Path, group_path: Path, max_bytes: int) -> tup
                 subject=f"user:{name[:100]}",
                 fingerprint=_fingerprint((uid, gid, home, shell)),
                 risk_markers=tuple(sorted(markers)),
-                metadata={"uid": uid, "gid": gid, "home_hash": stable_hash(home, 16), "shell": shell[:120]},
+                metadata={"uid": uid, "gid": gid, "home_hash": stable_hash(home, 16, namespace=namespace), "shell": shell[:120]},
             ))
     groups, error = _read_text(group_path, max_bytes)
     if error:
@@ -108,7 +108,7 @@ def _account_records(passwd_path: Path, group_path: Path, max_bytes: int) -> tup
                 subject=f"group:{name[:100]}",
                 fingerprint=_fingerprint((gid, members)),
                 risk_markers=markers,
-                metadata={"gid": gid, "member_count": len(members), "members_hash": stable_hash("|".join(members), 16)},
+                metadata={"gid": gid, "member_count": len(members), "members_hash": stable_hash("|".join(members), 16, namespace=namespace)},
             ))
     return records, errors, homes
 
@@ -176,10 +176,13 @@ def observe_persistence(
     globs: tuple[str, ...] = _DEFAULT_GLOBS,
     max_entries: int = 500,
     max_file_bytes: int = 1_048_576,
+    namespace: str = "quietward-v1",
 ) -> tuple[tuple[PersistenceRecord, ...], tuple[str, ...]]:
     if max_entries <= 0 or max_file_bytes <= 0:
         raise ValueError("persistence limits must be positive")
-    records, errors, homes = _account_records(passwd_path, group_path, max_file_bytes)
+    records, errors, homes = _account_records(
+        passwd_path, group_path, max_file_bytes, namespace
+    )
     candidates: set[Path] = set(_FIXED_FILES)
     for pattern in globs:
         try:

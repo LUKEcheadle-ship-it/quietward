@@ -95,6 +95,17 @@ class QualificationTests(unittest.TestCase):
         self.assertEqual(report.decision, "FAIL")
         self.assertTrue(any("privacy flag" in blocker for blocker in report.blockers))
 
+    def test_applicable_privacy_flag_must_be_present(self) -> None:
+        event = SecurityEvent("event-3", self.snapshot2.observed_at, "host-test", "debian_process_snapshot", EventKind.PROCESS_START, "/tmp/tool", {"raw_arguments_persisted": False})
+        report = self.qualifier([CollectionBatch(self.snapshot1, ()), CollectionBatch(self.snapshot2, (event,))], rss=None)
+        self.assertEqual(report.decision, "FAIL")
+        self.assertTrue(any("raw_username_persisted" in blocker for blocker in report.blockers))
+
+    def test_unrelated_privacy_flags_are_not_required(self) -> None:
+        event = SecurityEvent("event-4", self.snapshot2.observed_at, "host-test", "debian_socket_snapshot", EventKind.NEW_LISTENING_PORT, "tcp://127.0.0.1:9999", {})
+        report = self.qualifier([CollectionBatch(self.snapshot1, ()), CollectionBatch(self.snapshot2, (event,))], rss=None)
+        self.assertEqual(report.decision, "PASS")
+
     def test_optional_collector_error_is_warning(self) -> None:
         snapshot1 = CollectorSnapshot(self.snapshot1.observed_at, "host-test", errors=("optional Docker inventory unavailable: permission denied",))
         snapshot2 = CollectorSnapshot(self.snapshot2.observed_at, "host-test", errors=("optional Docker inventory unavailable: permission denied",))

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import tempfile
 import unittest
@@ -9,6 +10,7 @@ from pathlib import Path
 from quietward.collectors.command import CommandResult
 from quietward.collectors.debian import DebianCollectorConfig, DebianReadOnlyCollector
 from quietward.privacy_identity import PrivacyIdentity
+from quietward.collectors.privacy import derive_host_id, stable_hash
 
 
 class PrivacyIdentityTests(unittest.TestCase):
@@ -29,6 +31,49 @@ class PrivacyIdentityTests(unittest.TestCase):
             self.assertNotEqual(one.identify("root"), "sha256-placeholder")
             self.assertEqual(len(one.identify("root")), 32)
             self.assertTrue(PrivacyIdentity.DOMAIN.startswith(b"quietward-"))
+
+    def test_pre_rename_namespace_preserves_legacy_pseudonyms(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.key(Path(directory), b"l" * 32)
+            current = PrivacyIdentity.load(path)
+            legacy = PrivacyIdentity.load(path, namespace="forge-sentinel-v1")
+            self.assertNotEqual(current.identify("synthetic"), legacy.identify("synthetic"))
+            self.assertEqual(
+                legacy.identify("synthetic"),
+                PrivacyIdentity.load(
+                    path,
+                    namespace="forge-sentinel-v1",
+                ).identify("synthetic"),
+            )
+
+    def test_unknown_namespace_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(ValueError, "namespace"):
+                PrivacyIdentity.load(
+                    self.key(Path(directory)),
+                    namespace="untrusted",
+                )
+
+    def test_pre_rename_collector_hash_namespace_preserves_host_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            machine_id = Path(directory) / "machine-id"
+            machine_id.write_text("synthetic-machine\n", encoding="utf-8")
+            expected = hashlib.sha256(
+                b"forge-sentinel-v1\0synthetic-machine"
+            ).hexdigest()[:16]
+            self.assertEqual(
+                derive_host_id(
+                    machine_id,
+                    namespace="forge-sentinel-v1",
+                ),
+                "host-" + expected,
+            )
+            self.assertNotEqual(
+                stable_hash("synthetic", namespace="forge-sentinel-v1"),
+                stable_hash("synthetic"),
+            )
+            with self.assertRaisesRegex(ValueError, "namespace"):
+                stable_hash("synthetic", namespace="untrusted")
 
     def test_invalid_key_forms_fail_closed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -100,7 +145,7 @@ class PrivacyIdentityTests(unittest.TestCase):
     def test_process_account_identity_is_keyed_in_snapshots(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             key = self.key(Path(directory))
-            runner = type("Runner", (), {"run": lambda self, argv: CommandResult(tuple(argv), 0, "1 0 root init /sbin/init\n2 1 homelab python /usr/bin/python\n", "")})()
+            runner = type("Runner", (), {"run": lambda self, argv: CommandResult(tuple(argv), 0, "1 0 root init /sbin/init\n2 1 operator python /usr/bin/python\n", "")})()
             collector = DebianReadOnlyCollector(
                 DebianCollectorConfig(
                     sensitive_files=(),
@@ -117,7 +162,7 @@ class PrivacyIdentityTests(unittest.TestCase):
             )
             serialized = json.dumps(collector.collect().snapshot.to_dict(), sort_keys=True)
             self.assertNotIn("root", serialized)
-            self.assertNotIn("homelab", serialized)
+            self.assertNotIn("operator", serialized)
             self.assertIn("user_identity_hash", serialized)
 
 

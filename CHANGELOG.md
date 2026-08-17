@@ -18,6 +18,8 @@ All notable changes are documented here.
 
 - Renamed the product, repository package, command, installers, services, local paths, dashboard, model assets, and release archives to QuietWard.
 - Retained a narrow compatibility namespace for pre-rename alpha Python imports while all new usage targets `quietward`.
+- Added a rollback-safe Debian user-install migration that preserves corrected pre-rename privacy identity, signed evidence, database and review state without rewriting historical signatures.
+- Made target-host qualification use the installed service configuration and treat expected non-root file permission boundaries as warnings while enforcing event-specific privacy flags.
 - Removed the unnecessary standalone NOTICE disclaimer; the standard MIT LICENSE remains authoritative.
 
 ## 0.4.0-alpha.1 - 2026-08-01

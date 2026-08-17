@@ -73,6 +73,8 @@ class CollectorSettings:
     max_persistence_entries: int = 500
     max_docker_inspects: int = 50
     privacy_identity_key_path: Path | None = None
+    privacy_identity_namespace: str = "quietward-v1"
+    data_identity_namespace: str = "quietward-v1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,6 +88,7 @@ class StorageSettings:
     max_cycles: int = 2000
     max_scanner_runs: int = 10000
     evidence_signing_key_path: Path | None = None
+    evidence_signing_key_namespace: str = "quietward-v1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -205,6 +208,8 @@ class SentinelConfig:
                 "use_shell",
                 "use_sudo",
                 "privacy_identity_key_path",
+                "privacy_identity_namespace",
+                "data_identity_namespace",
             },
             "collector",
         )
@@ -267,7 +272,23 @@ class SentinelConfig:
                 ),
                 "collector.privacy_identity_key_path",
             ),
+            privacy_identity_namespace=str(
+                raw_collector.get("privacy_identity_namespace") or "quietward-v1"
+            ),
+            data_identity_namespace=str(
+                raw_collector.get("data_identity_namespace") or "quietward-v1"
+            ),
         )
+        if collector.privacy_identity_namespace not in {
+            "quietward-v1",
+            "forge-sentinel-v1",
+        }:
+            raise ValueError("collector.privacy_identity_namespace is unsupported")
+        if collector.data_identity_namespace not in {
+            "quietward-v1",
+            "forge-sentinel-v1",
+        }:
+            raise ValueError("collector.data_identity_namespace is unsupported")
 
         raw_storage = _object(value.get("storage"), "storage")
         _unknown(
@@ -282,6 +303,7 @@ class SentinelConfig:
                 "max_cycles",
                 "max_scanner_runs",
                 "evidence_signing_key_path",
+                "evidence_signing_key_namespace",
             },
             "storage",
         )
@@ -320,7 +342,15 @@ class SentinelConfig:
                 raw_storage.get("evidence_signing_key_path"),
                 "storage.evidence_signing_key_path",
             ),
+            evidence_signing_key_namespace=str(
+                raw_storage.get("evidence_signing_key_namespace") or "quietward-v1"
+            ),
         )
+        if storage.evidence_signing_key_namespace not in {
+            "quietward-v1",
+            "forge-sentinel-v1",
+        }:
+            raise ValueError("storage.evidence_signing_key_namespace is unsupported")
 
         raw_service = _object(value.get("service"), "service")
         _unknown(

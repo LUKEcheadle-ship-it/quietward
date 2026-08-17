@@ -55,6 +55,8 @@ class WindowsCollectorConfig:
     max_docker_inspects: int = 50
     max_connection_records: int = 2000
     privacy_identity_key_path: Path | None = None
+    privacy_identity_namespace: str = "quietward-v1"
+    data_identity_namespace: str = "quietward-v1"
 
     def __post_init__(self) -> None:
         if (
@@ -81,7 +83,9 @@ class WindowsReadOnlyCollector:
             timeout_seconds=20.0,
             additional_commands=WINDOWS_COMMANDS,
         )
-        self.host_id = host_id or derive_host_id()
+        self.host_id = host_id or derive_host_id(
+            namespace=self.config.data_identity_namespace
+        )
         self.privacy_identity: PrivacyIdentity | None = None
         if (
             self.config.include_processes
@@ -90,7 +94,8 @@ class WindowsReadOnlyCollector:
         ) and self.config.privacy_identity_key_path is not None:
             try:
                 self.privacy_identity = PrivacyIdentity.load(
-                    self.config.privacy_identity_key_path
+                    self.config.privacy_identity_key_path,
+                    namespace=self.config.privacy_identity_namespace,
                 )
             except ValueError:
                 self.privacy_identity = None
@@ -164,7 +169,10 @@ class WindowsReadOnlyCollector:
         if self.config.include_docker:
             result = self.runner.run(DOCKER_PS_COMMAND)
             if self._ok(result, "Docker inventory", errors, optional=True):
-                base = parse_docker_ps_output(result.stdout)
+                base = parse_docker_ps_output(
+                    result.stdout,
+                    namespace=self.config.data_identity_namespace,
+                )
                 ids = parse_docker_ps_ids(result.stdout)
                 enriched = []
                 for index, record in enumerate(base):

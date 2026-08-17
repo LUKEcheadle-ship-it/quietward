@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import errno
 import os
 import stat
 from pathlib import Path
@@ -48,7 +49,12 @@ def observe_file(path: Path, max_hash_bytes: int = 4 * 1024 * 1024) -> FileRecor
             finally:
                 os.close(fd)
         except OSError as exc:
-            error = redact_error(str(exc))
+            detail = redact_error(str(exc))
+            error = (
+                f"optional permission boundary: {detail}"
+                if exc.errno in {errno.EACCES, errno.EPERM}
+                else detail
+            )
     return FileRecord(
         path=str(path),
         exists=True,

@@ -55,7 +55,10 @@ class SentinelStore(AbstractContextManager["SentinelStore"]):
         except OSError:
             pass
         self.signer = (
-            EvidenceSigner.load(settings.evidence_signing_key_path)
+            EvidenceSigner.load(
+                settings.evidence_signing_key_path,
+                key_id_namespace=settings.evidence_signing_key_namespace,
+            )
             if settings.evidence_signing_key_path is not None
             else None
         )
