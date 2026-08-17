@@ -51,6 +51,18 @@ class ReleaseCandidateToolingTests(unittest.TestCase):
             for marker in forbidden:
                 self.assertNotIn(marker, text)
 
+    def test_linux_migration_installer_restores_legacy_service_on_any_failed_attempt(self) -> None:
+        text = (ROOT / "scripts" / "install_user_service.sh").read_text(encoding="utf-8")
+        self.assertIn("legacy_service_stop_attempted=false", text)
+        self.assertIn("legacy_service_stop_attempted=true", text)
+        self.assertIn("trap 'rollback_migration $?' ERR", text)
+        self.assertIn(
+            "if ${legacy_service_stop_attempted} && ! ${migration_finalized}; then",
+            text,
+        )
+        self.assertIn("systemctl --user start forge-sentinel.service", text)
+        self.assertGreaterEqual(text.count("rollback_migration 2"), 2)
+
     def test_release_builder_is_offline_and_non_publishing(self) -> None:
         text = (ROOT / "scripts" / "build_release_candidate.ps1").read_text(encoding="utf-8")
         for marker in (
