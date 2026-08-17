@@ -27,24 +27,29 @@ unit_dir="${HOME}/.config/systemd/user"
 
 migration_prepared=false
 migration_finalized=false
+legacy_service_stop_attempted=false
 rollback_migration() {
-  status=$?
+  status="${1:-$?}"
+  trap - ERR
   set +e
   if ${migration_prepared} && ! ${migration_finalized}; then
     systemctl --user disable --now quietward.service >/dev/null 2>&1
     python3 "${repo_root}/scripts/migrate_pre_rename_user_install.py" rollback
     systemctl --user daemon-reload
+  fi
+  if ${legacy_service_stop_attempted} && ! ${migration_finalized}; then
     systemctl --user start forge-sentinel.service
   fi
   exit "${status}"
 }
-trap rollback_migration ERR
+trap 'rollback_migration $?' ERR
 
 if ${migrate_pre_rename}; then
+  legacy_service_stop_attempted=true
   systemctl --user stop forge-sentinel.service
   if systemctl --user is-active --quiet forge-sentinel.service; then
     echo "forge-sentinel.service did not stop cleanly" >&2
-    exit 2
+    rollback_migration 2
   fi
   python3 "${repo_root}/scripts/migrate_pre_rename_user_install.py" prepare
   migration_prepared=true
@@ -106,7 +111,7 @@ fi
 if ${migrate_pre_rename}; then
   if ! systemctl --user is-active --quiet quietward.service; then
     echo "quietward.service did not become active; rolling back" >&2
-    exit 2
+    rollback_migration 2
   fi
   python3 "${repo_root}/scripts/migrate_pre_rename_user_install.py" finalize
   migration_finalized=true
