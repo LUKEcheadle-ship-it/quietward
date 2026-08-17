@@ -61,7 +61,7 @@ class ReleaseCandidateToolingTests(unittest.TestCase):
             text,
         )
         self.assertIn("systemctl --user start forge-sentinel.service", text)
-        self.assertGreaterEqual(text.count("rollback_migration 2"), 2)
+        self.assertGreaterEqual(text.count("rollback_migration 2"), 3)
 
     def test_release_builder_is_offline_and_non_publishing(self) -> None:
         text = (ROOT / "scripts" / "build_release_candidate.ps1").read_text(encoding="utf-8")
