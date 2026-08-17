@@ -31,8 +31,8 @@ class ReleaseCandidateToolingTests(unittest.TestCase):
         notes = (ROOT / "docs" / "releases" / f"v{version}.md").read_text(encoding="utf-8")
         self.assertNotIn("PENDING", notes)
         self.assertIn("checksum sidecar", notes.lower())
-        self.assertIn("132 passing tests", notes)
-        self.assertIn("quietward-v0.4.0-alpha.1-source.zip", notes)
+        self.assertRegex(notes, r"\d+ passing tests")
+        self.assertIn(f"quietward-v{version}-source.zip", notes)
 
     def test_windows_release_wrappers_delegate_without_extra_authority(self) -> None:
         expected = {

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.0-alpha.2 - 2026-08-17
+
+- Group dashboard findings by normalized title, subject category, and detector family while preserving every original record and incident link.
+- Sort critical through informational findings deterministically, with unknown severities last and urgent review states first.
+- Move first-run guidance above findings with a local-only dismiss/restore control.
+- Format dashboard timestamps for people while retaining exact UTC values.
+- Translate allowlisted scoring reasons into plain language and retain escaped raw details.
+- Make manual and automatic refreshes observable, non-overlapping, and non-destructive on failure.
+- macOS remains unsupported and not natively qualified; its platform gate is intentionally unchanged.
+
 All notable changes are documented here.
 
 ## Unreleased

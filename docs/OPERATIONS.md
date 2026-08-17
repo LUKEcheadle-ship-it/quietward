@@ -1,5 +1,11 @@
 # QuietWard operations
 
+## Dashboard triage
+
+Start with critical and high groups. Expand a group to inspect its original findings; Details opens the existing read-only incident bundle. Severity and review filters apply to children and remain active across refreshes. The count line distinguishes grouped results from raw findings and labels the 500-finding display bound when the database contains more.
+
+Refresh re-fetches current local state without reloading the page. The control is disabled while active. A failed refresh retains the last good view and can be retried. Help restores locally dismissed onboarding; the choice is kept only in browser local storage and is never written to QuietWard storage.
+
 ## Commands
 
 ```bash
