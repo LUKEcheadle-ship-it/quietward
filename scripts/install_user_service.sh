@@ -60,7 +60,7 @@ chmod 700 "${install_root}" "${app_root}" "${bin_root}" "${config_dir}" "${state
 privacy_key="${config_dir}/privacy-identity.key"
 if [[ -L "${privacy_key}" ]]; then
   echo "Refusing symlinked privacy identity key: ${privacy_key}" >&2
-  exit 2
+  rollback_migration 2
 fi
 if [[ ! -e "${privacy_key}" ]]; then
   umask 077
