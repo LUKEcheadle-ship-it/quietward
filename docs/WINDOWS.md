@@ -1,6 +1,6 @@
 # Windows 11 alpha guide
 
-QuietWard `v0.4.0-alpha.1` is qualified on Windows 11 as an experimental, observation-only monitor. It collects and explains local security evidence but does not automatically change the computer.
+QuietWard `v0.4.0-alpha.2` is qualified on Windows 11 as an experimental, observation-only monitor. It collects and explains local security evidence but does not automatically change the computer.
 
 ## Monitored sources
 

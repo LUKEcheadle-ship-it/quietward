@@ -17,6 +17,8 @@ QuietWard monitors processes, listening ports, persistence, selected sensitive f
 
 On Windows, it also displays read-only Microsoft Defender status. Defender evidence is labeled separately and QuietWard does not start scans or change Defender settings.
 
+![QuietWard read-only dashboard on Windows](docs/assets/quietward-windows-dashboard.png)
+
 ## Windows quick start
 
 Requirements:

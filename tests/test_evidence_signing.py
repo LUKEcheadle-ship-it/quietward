@@ -75,6 +75,12 @@ class EvidenceSigningTests(unittest.TestCase):
             self.assertEqual(len(signer.key_id), 20)
             self.assertEqual(signer.algorithm, "hmac-sha256-v1")
 
+    def test_key_with_windows_text_eof_byte_loads_completely(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            key = b"a" * 16 + b"\x1a" + b"b" * 47
+            signer = EvidenceSigner.load(self._key(Path(temporary), key))
+            self.assertEqual(signer.key, key)
+
     def test_signed_cycle_detects_signature_tampering(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
