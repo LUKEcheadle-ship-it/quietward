@@ -44,6 +44,8 @@ _CATEGORY_BY_KIND = {
     EventKind.COLLECTOR_HEALTH: "operational",
 }
 
+_OUTBOX_MAX_EVENTS = 1000
+
 
 def _derive_hmac_key(secret: str) -> bytes:
     return hashlib.sha256(("quietward-response-v1:" + secret).encode("utf-8")).digest()
@@ -228,16 +230,23 @@ class QuietWardResponseClient:
             return []
         try:
             value = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return []
-        return [item for item in value if isinstance(item, dict)] if isinstance(value, list) else []
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ResponseClientError("response event outbox is unreadable or invalid") from exc
+        if not isinstance(value, list) or any(not isinstance(item, dict) for item in value):
+            raise ResponseClientError("response event outbox has an invalid structure")
+        return value
 
     def _queue_event(self, payload: dict[str, Any]) -> None:
         queued = self._load_list(self.outbox_path)
         event_id = str(payload.get("event_id"))
-        if not any(str(item.get("event_id")) == event_id for item in queued):
-            queued.append(payload)
-        _atomic_json(self.outbox_path, queued[-1000:])
+        if any(str(item.get("event_id")) == event_id for item in queued):
+            return
+        if len(queued) >= _OUTBOX_MAX_EVENTS:
+            raise ResponseClientError(
+                f"response event outbox capacity reached ({_OUTBOX_MAX_EVENTS}); event was not queued"
+            )
+        queued.append(payload)
+        _atomic_json(self.outbox_path, queued)
 
     def flush_outbox(self) -> int:
         queued = self._load_list(self.outbox_path)
@@ -258,10 +267,10 @@ class QuietWardResponseClient:
             return None
         try:
             state = json.loads(self.demo_state_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return None
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ResponseClientError("demo fixture state is unreadable or invalid") from exc
         if not isinstance(state, dict) or state.get("service") != "quietward-response-demo":
-            return None
+            raise ResponseClientError("demo fixture state does not identify the dedicated fixture")
         return state
 
     def _demo_fixture_event_payload(self, state: dict[str, Any]) -> dict[str, Any] | None:
@@ -338,9 +347,11 @@ class QuietWardResponseClient:
             return {}
         try:
             value = json.loads(self.ledger_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return {}
-        return value if isinstance(value, dict) else {}
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ResponseClientError("response action ledger is unreadable or invalid") from exc
+        if not isinstance(value, dict) or any(not isinstance(item, dict) for item in value.values()):
+            raise ResponseClientError("response action ledger has an invalid structure")
+        return value
 
     def _save_ledger(self, value: dict[str, dict[str, Any]]) -> None:
         _atomic_json(self.ledger_path, value)
@@ -349,12 +360,9 @@ class QuietWardResponseClient:
         path = self.demo_state_path
         if path.name != "quietward-response-demo.json" or not path.exists():
             raise ResponseClientError("dedicated QuietWard Response demo fixture is not initialized")
-        try:
-            state = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            raise ResponseClientError("demo fixture state is unreadable") from exc
-        if state.get("service") != "quietward-response-demo":
-            raise ResponseClientError("refusing to modify a non-demo service fixture")
+        state = self._load_demo_state()
+        if state is None:
+            raise ResponseClientError("dedicated QuietWard Response demo fixture is not initialized")
         if state.get("last_action_id") == action_id and isinstance(state.get("last_action_result"), dict):
             return dict(state["last_action_result"])
 
