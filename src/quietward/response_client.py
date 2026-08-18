@@ -161,7 +161,12 @@ class QuietWardResponseClient:
         self.demo_state_path = config.state_dir / "quietward-response-demo.json"
 
     @classmethod
-    def from_environment(cls, *, host_id: str) -> QuietWardResponseClient | None:
+    def from_environment(
+        cls,
+        *,
+        host_id: str,
+        default_state_dir: Path | None = None,
+    ) -> QuietWardResponseClient | None:
         enabled = os.environ.get("QUIETWARD_RESPONSE_ENABLED", "").strip().lower()
         if enabled not in {"1", "true", "yes", "on"}:
             return None
@@ -176,12 +181,17 @@ class QuietWardResponseClient:
             raise ResponseClientError(
                 "QuietWard Response is enabled but credentials are incomplete: " + ", ".join(missing)
             )
-        state_dir = Path(
-            os.environ.get(
-                "QUIETWARD_RESPONSE_STATE_DIR",
-                str(Path.home() / ".local" / "state" / "quietward"),
-            )
-        ).expanduser()
+
+        state_override = os.environ.get("QUIETWARD_RESPONSE_STATE_DIR", "").strip()
+        if state_override:
+            state_dir = Path(state_override).expanduser()
+        elif default_state_dir is not None:
+            state_dir = default_state_dir.expanduser()
+        else:
+            state_dir = (Path.home() / ".local" / "state" / "quietward").expanduser()
+        if not state_dir.is_absolute():
+            raise ResponseClientError("QuietWard Response state directory must be absolute")
+
         return cls(
             ResponseClientConfig(
                 base_url=required["base_url"].rstrip("/"),
