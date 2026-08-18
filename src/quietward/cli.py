@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import argparse
 import json
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Sequence
 
 from .alerts import LocalAlertSink
-from .collectors import CollectionBatch, CollectorSnapshot, DebianCollectorConfig, DebianReadOnlyCollector
+from .collectors import CollectionBatch, CollectorSnapshot, DebianCollectorConfig, DebianReadOnlyCollector, build_collector
 from .config import load_config
 from .contracts import SecurityEvent
 from .dashboard import DashboardServer
@@ -78,6 +79,7 @@ def build_parser() -> argparse.ArgumentParser:
     ingest.add_argument("--suite")
     ingest.add_argument("--pretty", action="store_true")
     qualify = subparsers.add_parser("qualify", help="run bounded target-host qualification")
+    _config_argument(qualify)
     qualify.add_argument("--cycles", type=int, default=3)
     qualify.add_argument("--interval-seconds", type=float, default=1.0)
     qualify.add_argument("--max-cycle-ms", type=float, default=5000.0)
@@ -148,15 +150,27 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = {"scanner": args.scanner, "events": [event.to_dict() for event in events], "analysis": SentinelPipeline().analyze(events).to_dict(), "safety": {"adapter_only": True, "scanner_executed": False, "actions_executed": 0}}
         print(json.dumps(result, indent=2 if args.pretty else None, sort_keys=True))
         return 0
-    if args.command in {"collect", "qualify"}:
+    if args.command == "qualify":
+        config = load_config(args.config)
+        overrides: dict[str, Any] = {}
+        if args.files:
+            overrides["sensitive_files"] = tuple(args.files)
+        if args.no_docker:
+            overrides["include_docker"] = False
+        if args.no_journal:
+            overrides["include_auth_journal"] = False
+        if args.no_persistence:
+            overrides["include_persistence"] = False
+        settings = replace(config.collector, **overrides)
+        collector = build_collector(settings, host_id=args.host_id)
+        report = TargetHostQualifier(collector, QualificationConfig(cycles=args.cycles, interval_seconds=args.interval_seconds, max_cycle_ms=args.max_cycle_ms, max_snapshot_bytes=args.max_snapshot_bytes, max_peak_rss_bytes=args.max_peak_rss_bytes, max_events_per_cycle=args.max_events_per_cycle)).run().to_dict()
+        print(json.dumps(report, indent=2 if args.pretty else None, sort_keys=True))
+        return 0 if report["decision"] == "PASS" else 1
+    if args.command == "collect":
         kwargs: dict[str, Any] = {"include_docker": not args.no_docker, "include_auth_journal": not args.no_journal, "include_persistence": not args.no_persistence}
         if args.files:
             kwargs["sensitive_files"] = tuple(args.files)
         collector = DebianReadOnlyCollector(config=DebianCollectorConfig(**kwargs), host_id=args.host_id)
-        if args.command == "qualify":
-            report = TargetHostQualifier(collector, QualificationConfig(cycles=args.cycles, interval_seconds=args.interval_seconds, max_cycle_ms=args.max_cycle_ms, max_snapshot_bytes=args.max_snapshot_bytes, max_peak_rss_bytes=args.max_peak_rss_bytes, max_events_per_cycle=args.max_events_per_cycle)).run().to_dict()
-            print(json.dumps(report, indent=2 if args.pretty else None, sort_keys=True))
-            return 0 if report["decision"] == "PASS" else 1
         previous = load_snapshot(args.previous_snapshot) if args.previous_snapshot else None
         batch = collector.collect(previous)
         result = batch.to_dict()

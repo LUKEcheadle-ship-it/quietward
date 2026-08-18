@@ -32,7 +32,7 @@ def _persistence_event(current: CollectorSnapshot, record: PersistenceRecord, ob
         source="debian_persistence_snapshot",
         kind=kind,
         subject=record.subject,
-        attributes={"category": record.category, "change_type": change_type, "previous_fingerprint": previous_fingerprint, "current_fingerprint": record.fingerprint, "risk_markers": list(record.risk_markers), "metadata": record.metadata, "persistence_indicator": True, "privileged_context": privileged, "baseline_deviation": 1.0, "raw_content_persisted": False},
+        attributes={"category": record.category, "change_type": change_type, "previous_fingerprint": previous_fingerprint, "current_fingerprint": record.fingerprint, "risk_markers": list(record.risk_markers), "metadata": record.metadata, "persistence_indicator": True, "privileged_context": privileged, "baseline_deviation": 1.0, "raw_content_persisted": False, "raw_persistence_content_persisted": False, "raw_authorized_keys_persisted": False},
         confidence=0.95 if record.risk_markers else 0.8,
     )
 
@@ -87,13 +87,13 @@ def diff_snapshots(current: CollectorSnapshot, previous: CollectorSnapshot | Non
     for container in current.containers:
         prior = previous_containers.get(container.identity)
         if prior is None:
-            events.append(SecurityEvent(_event_id(current.host_id, "container", container.identity, observed_at.isoformat()), observed_at, current.host_id, "docker_read_only_snapshot", EventKind.CONTAINER_CHANGE, f"container:{container.name}", {"container_id_hash": container.container_id_hash, "image": container.image, "name": container.name, "status": container.status, "image_uses_latest_tag": container.image.endswith(":latest"), "security_markers": list(container.security_markers), "privileged_context": container.privileged, "persistence_indicator": bool(container.security_markers), "baseline_deviation": 1.0}, 0.9 if container.security_markers else 0.8))
+            events.append(SecurityEvent(_event_id(current.host_id, "container", container.identity, observed_at.isoformat()), observed_at, current.host_id, "docker_read_only_snapshot", EventKind.CONTAINER_CHANGE, f"container:{container.name}", {"container_id_hash": container.container_id_hash, "image": container.image, "name": container.name, "status": container.status, "image_uses_latest_tag": container.image.endswith(":latest"), "security_markers": list(container.security_markers), "privileged_context": container.privileged, "persistence_indicator": bool(container.security_markers), "baseline_deviation": 1.0, "raw_container_id_persisted": False}, 0.9 if container.security_markers else 0.8))
             continue
         fingerprint_changed = prior.security_fingerprint is not None and container.security_fingerprint != prior.security_fingerprint
         upgrade_risk = prior.security_fingerprint is None and bool(container.security_markers)
         runtime_changed = prior.security_fingerprint is not None and (container.restart_count > prior.restart_count or container.health_status != prior.health_status)
         if fingerprint_changed or upgrade_risk or runtime_changed:
-            events.append(SecurityEvent(_event_id(current.host_id, "container-config", container.identity, container.security_fingerprint, observed_at.isoformat()), observed_at, current.host_id, "docker_inspect_read_only", EventKind.CONTAINER_CONFIGURATION_CHANGE, f"container:{container.name}", {"container_id_hash": container.container_id_hash, "image": container.image, "security_markers": list(container.security_markers), "previous_security_fingerprint": prior.security_fingerprint, "current_security_fingerprint": container.security_fingerprint, "restart_count": container.restart_count, "previous_restart_count": prior.restart_count, "health_status": container.health_status, "privileged_context": container.privileged, "persistence_indicator": bool(container.security_markers), "baseline_deviation": 1.0}, 0.95))
+            events.append(SecurityEvent(_event_id(current.host_id, "container-config", container.identity, container.security_fingerprint, observed_at.isoformat()), observed_at, current.host_id, "docker_inspect_read_only", EventKind.CONTAINER_CONFIGURATION_CHANGE, f"container:{container.name}", {"container_id_hash": container.container_id_hash, "image": container.image, "security_markers": list(container.security_markers), "previous_security_fingerprint": prior.security_fingerprint, "current_security_fingerprint": container.security_fingerprint, "restart_count": container.restart_count, "previous_restart_count": prior.restart_count, "health_status": container.health_status, "privileged_context": container.privileged, "persistence_indicator": bool(container.security_markers), "baseline_deviation": 1.0, "raw_container_id_persisted": False}, 0.95))
 
     previous_files = {item.path: item for item in previous.files}
     for current_file in current.files:
@@ -103,7 +103,7 @@ def diff_snapshots(current: CollectorSnapshot, previous: CollectorSnapshot | Non
         changes = _changed_fields(prior, current_file)
         if not changes:
             continue
-        events.append(SecurityEvent(_event_id(current.host_id, "file", current_file.path, changes, observed_at.isoformat()), observed_at, current.host_id, "debian_file_integrity_snapshot", EventKind.SENSITIVE_FILE_CHANGE, current_file.path, {"changed_fields": list(changes), "previous_sha256": prior.sha256, "current_sha256": current_file.sha256, "previous_mode": prior.mode, "current_mode": current_file.mode, "exists": current_file.exists, "privileged_context": True, "baseline_deviation": 1.0}))
+        events.append(SecurityEvent(_event_id(current.host_id, "file", current_file.path, changes, observed_at.isoformat()), observed_at, current.host_id, "debian_file_integrity_snapshot", EventKind.SENSITIVE_FILE_CHANGE, current_file.path, {"changed_fields": list(changes), "previous_sha256": prior.sha256, "current_sha256": current_file.sha256, "previous_mode": prior.mode, "current_mode": current_file.mode, "exists": current_file.exists, "privileged_context": True, "baseline_deviation": 1.0, "raw_file_content_persisted": False}))
 
     previous_persistence = {item.identity: item for item in previous.persistence}
     current_identities = {item.identity for item in current.persistence}

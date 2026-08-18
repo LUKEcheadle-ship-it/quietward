@@ -75,6 +75,33 @@ class EvidenceSigningTests(unittest.TestCase):
             self.assertEqual(len(signer.key_id), 20)
             self.assertEqual(signer.algorithm, "hmac-sha256-v1")
 
+    def test_pre_rename_namespace_preserves_legacy_signatures(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = self._key(Path(temporary))
+            current = EvidenceSigner.load(path)
+            legacy = EvidenceSigner.load(
+                path,
+                key_id_namespace="forge-sentinel-v1",
+            )
+            self.assertNotEqual(current.key_id, legacy.key_id)
+            signature = legacy.sign(7, "a" * 64)
+            self.assertTrue(legacy.verify(7, "a" * 64, signature))
+            self.assertFalse(current.verify(7, "a" * 64, signature))
+
+    def test_unknown_key_namespace_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            with self.assertRaisesRegex(ValueError, "namespace"):
+                EvidenceSigner.load(
+                    self._key(Path(temporary)),
+                    key_id_namespace="untrusted",
+                )
+
+    def test_key_with_windows_text_eof_byte_loads_completely(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            key = b"a" * 16 + b"\x1a" + b"b" * 47
+            signer = EvidenceSigner.load(self._key(Path(temporary), key))
+            self.assertEqual(signer.key, key)
+
     def test_signed_cycle_detects_signature_tampering(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

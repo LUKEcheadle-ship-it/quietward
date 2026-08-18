@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.0-alpha.2 - 2026-08-17
+
+- Group dashboard findings by normalized title, subject category, and detector family while preserving every original record and incident link.
+- Sort critical through informational findings deterministically, with unknown severities last and urgent review states first.
+- Move first-run guidance above findings with a local-only dismiss/restore control.
+- Format dashboard timestamps for people while retaining exact UTC values.
+- Translate allowlisted scoring reasons into plain language and retain escaped raw details.
+- Make manual and automatic refreshes observable, non-overlapping, and non-destructive on failure.
+- Correct the installed runtime version metadata to `0.4.0a2` and enforce consistency with project metadata in the release test suite.
+- macOS remains unsupported and not natively qualified; its platform gate is intentionally unchanged.
+
 All notable changes are documented here.
 
 ## Unreleased
@@ -8,6 +19,8 @@ All notable changes are documented here.
 
 - Renamed the product, repository package, command, installers, services, local paths, dashboard, model assets, and release archives to QuietWard.
 - Retained a narrow compatibility namespace for pre-rename alpha Python imports while all new usage targets `quietward`.
+- Added a rollback-safe Debian user-install migration that preserves corrected pre-rename privacy identity, signed evidence, database and review state without rewriting historical signatures.
+- Made target-host qualification use the installed service configuration and treat expected non-root file permission boundaries as warnings while enforcing event-specific privacy flags.
 - Removed the unnecessary standalone NOTICE disclaimer; the standard MIT LICENSE remains authoritative.
 
 ## 0.4.0-alpha.1 - 2026-08-01

@@ -6,12 +6,24 @@ import platform
 from pathlib import Path
 
 
-_NAMESPACE = b"quietward-v1"
+HASH_NAMESPACES = {
+    "quietward-v1": b"quietward-v1",
+    "forge-sentinel-v1": b"forge-sentinel-v1",
+}
 
 
-def stable_hash(value: str, length: int = 20) -> str:
+def stable_hash(
+    value: str,
+    length: int = 20,
+    *,
+    namespace: str = "quietward-v1",
+) -> str:
+    try:
+        domain = HASH_NAMESPACES[namespace]
+    except KeyError as exc:
+        raise ValueError("unsupported collector hash namespace") from exc
     digest = hashlib.sha256(
-        _NAMESPACE + b"\x00" + value.encode("utf-8", errors="replace")
+        domain + b"\x00" + value.encode("utf-8", errors="replace")
     ).hexdigest()
     return digest[:length]
 
@@ -35,6 +47,8 @@ def _windows_machine_id() -> str | None:
 
 def derive_host_id(
     machine_id_path: Path = Path("/etc/machine-id"),
+    *,
+    namespace: str = "quietward-v1",
 ) -> str:
     raw: str | None = None
     try:
@@ -47,7 +61,7 @@ def derive_host_id(
     if raw is None:
         node = platform.node().strip()
         raw = node or f"unknown-{platform.system()}-{platform.machine()}"
-    return "host-" + stable_hash(raw, 16)
+    return "host-" + stable_hash(raw, 16, namespace=namespace)
 
 
 def redact_error(value: str, limit: int = 300) -> str:

@@ -144,6 +144,17 @@ class TargetHostQualifier:
         "raw_authorized_keys_persisted",
         "raw_username_persisted",
     }
+    REQUIRED_PRIVACY_FLAGS = {
+        EventKind.PROCESS_START: {"raw_arguments_persisted", "raw_username_persisted"},
+        EventKind.AUTH_FAILURE: {"raw_source_address_persisted", "raw_username_persisted", "raw_log_message_persisted"},
+        EventKind.OUTBOUND_CONNECTION: {"raw_remote_address_persisted", "raw_local_address_persisted"},
+        EventKind.CONTAINER_CHANGE: {"raw_container_id_persisted"},
+        EventKind.CONTAINER_CONFIGURATION_CHANGE: {"raw_container_id_persisted"},
+        EventKind.FILE_CHANGE: {"raw_file_content_persisted"},
+        EventKind.SENSITIVE_FILE_CHANGE: {"raw_file_content_persisted"},
+        EventKind.ACCOUNT_CHANGE: {"raw_persistence_content_persisted", "raw_authorized_keys_persisted"},
+        EventKind.PERSISTENCE_CHANGE: {"raw_persistence_content_persisted", "raw_authorized_keys_persisted"},
+    }
 
     def __init__(
         self,
@@ -270,7 +281,9 @@ class TargetHostQualifier:
                     f"{', '.join(change_events[:10])}"
                 )
         for event in batch.events:
-            for flag in self.PRIVACY_FLAGS:
+            present_flags = self.PRIVACY_FLAGS.intersection(event.attributes)
+            required_flags = self.REQUIRED_PRIVACY_FLAGS.get(event.kind, set())
+            for flag in present_flags.union(required_flags):
                 if event.attributes.get(flag) is not False:
                     blockers.append(
                         f"cycle {index}: {event.event_id} privacy flag "

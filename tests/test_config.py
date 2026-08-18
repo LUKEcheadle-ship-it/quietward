@@ -50,6 +50,31 @@ class ConfigTests(unittest.TestCase):
                 {"state_dir": "/tmp/quietward-test", "surprise": True}
             )
 
+    def test_pre_rename_namespaces_are_explicit_and_bounded(self) -> None:
+        state_dir = str(Path(tempfile.gettempdir()) / "quietward-namespace-test")
+        config = QuietWardConfig.from_dict(
+            {
+                "state_dir": state_dir,
+                "collector": {
+                    "privacy_identity_namespace": "forge-sentinel-v1",
+                    "data_identity_namespace": "forge-sentinel-v1",
+                },
+                "storage": {
+                    "evidence_signing_key_namespace": "forge-sentinel-v1",
+                },
+            }
+        )
+        self.assertEqual(config.collector.privacy_identity_namespace, "forge-sentinel-v1")
+        self.assertEqual(config.collector.data_identity_namespace, "forge-sentinel-v1")
+        self.assertEqual(config.storage.evidence_signing_key_namespace, "forge-sentinel-v1")
+        with self.assertRaisesRegex(ValueError, "unsupported"):
+            QuietWardConfig.from_dict(
+                {
+                    "state_dir": state_dir,
+                    "collector": {"privacy_identity_namespace": "arbitrary"},
+                }
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

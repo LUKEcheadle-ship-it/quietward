@@ -8,6 +8,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+EVIDENCE_KEY_ID_NAMESPACES = {
+    "quietward-v1": b"quietward-evidence-key-id-v1\0",
+    "forge-sentinel-v1": b"forge-sentinel-evidence-key-id-v1\0",
+}
+
+
 @dataclass(frozen=True, slots=True)
 class EvidenceSigner:
     """Loads a private local key and signs retained evidence-chain hashes."""
@@ -17,12 +23,22 @@ class EvidenceSigner:
     algorithm: str = "hmac-sha256-v1"
 
     @classmethod
-    def load(cls, path: Path) -> "EvidenceSigner":
+    def load(
+        cls,
+        path: Path,
+        *,
+        key_id_namespace: str = "quietward-v1",
+    ) -> "EvidenceSigner":
+        try:
+            key_id_domain = EVIDENCE_KEY_ID_NAMESPACES[key_id_namespace]
+        except KeyError as exc:
+            raise ValueError("unsupported evidence signing key namespace") from exc
         path = path.expanduser()
         if not path.is_absolute():
             raise ValueError("evidence signing key path must be absolute")
         flags = (
             os.O_RDONLY
+            | getattr(os, "O_BINARY", 0)
             | getattr(os, "O_CLOEXEC", 0)
             | getattr(os, "O_NOFOLLOW", 0)
         )
@@ -59,9 +75,7 @@ class EvidenceSigner:
             raise ValueError(
                 "evidence signing key must contain between 32 and 4096 bytes"
             )
-        key_id = hashlib.sha256(
-            b"quietward-evidence-key-id-v1\0" + key
-        ).hexdigest()[:20]
+        key_id = hashlib.sha256(key_id_domain + key).hexdigest()[:20]
         return cls(key_id=key_id, key=key)
 
     def sign(self, cycle_id: int, chain_hash: str) -> str:

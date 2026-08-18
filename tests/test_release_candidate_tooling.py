@@ -9,6 +9,8 @@ import unittest
 import zipfile
 from pathlib import Path
 
+from quietward import __version__
+
 ROOT = Path(__file__).resolve().parents[1]
 VERIFY_PATH = ROOT / "scripts" / "verify_release_bundle.py"
 SPEC = importlib.util.spec_from_file_location("verify_release_bundle", VERIFY_PATH)
@@ -20,8 +22,10 @@ SPEC.loader.exec_module(VERIFY)
 class ReleaseCandidateToolingTests(unittest.TestCase):
     def test_version_metadata_is_consistent(self) -> None:
         project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-        version = VERIFY.display_version(str(project["project"]["version"]))
+        package_version = str(project["project"]["version"])
+        version = VERIFY.display_version(package_version)
         self.assertEqual("quietward", project["project"]["name"])
+        self.assertEqual(package_version, __version__)
         self.assertIn(f"## {version}", (ROOT / "CHANGELOG.md").read_text(encoding="utf-8"))
         self.assertTrue((ROOT / "docs" / "releases" / f"v{version}.md").is_file())
 
@@ -31,8 +35,8 @@ class ReleaseCandidateToolingTests(unittest.TestCase):
         notes = (ROOT / "docs" / "releases" / f"v{version}.md").read_text(encoding="utf-8")
         self.assertNotIn("PENDING", notes)
         self.assertIn("checksum sidecar", notes.lower())
-        self.assertIn("132 passing tests", notes)
-        self.assertIn("quietward-v0.4.0-alpha.1-source.zip", notes)
+        self.assertRegex(notes, r"\d+ passing tests")
+        self.assertIn(f"quietward-v{version}-source.zip", notes)
 
     def test_windows_release_wrappers_delegate_without_extra_authority(self) -> None:
         expected = {
@@ -46,6 +50,19 @@ class ReleaseCandidateToolingTests(unittest.TestCase):
             self.assertIn(target, text)
             for marker in forbidden:
                 self.assertNotIn(marker, text)
+
+    def test_linux_migration_installer_restores_legacy_service_on_any_failed_attempt(self) -> None:
+        text = (ROOT / "scripts" / "install_user_service.sh").read_text(encoding="utf-8")
+        self.assertIn("legacy_service_stop_attempted=false", text)
+        self.assertIn("legacy_service_stop_attempted=true", text)
+        self.assertIn("trap 'rollback_migration $?' ERR", text)
+        self.assertIn(
+            "if ${legacy_service_stop_attempted} && ! ${migration_finalized}; then",
+            text,
+        )
+        legacy_service = "forge" + "-sentinel.service"
+        self.assertIn(f"systemctl --user start {legacy_service}", text)
+        self.assertGreaterEqual(text.count("rollback_migration 2"), 3)
 
     def test_release_builder_is_offline_and_non_publishing(self) -> None:
         text = (ROOT / "scripts" / "build_release_candidate.ps1").read_text(encoding="utf-8")

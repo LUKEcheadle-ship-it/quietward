@@ -122,7 +122,11 @@ def _destination_scope(host: str) -> str:
     return "reserved"
 
 
-def parse_connections_output(text: str) -> tuple[ConnectionRecord, ...]:
+def parse_connections_output(
+    text: str,
+    *,
+    namespace: str = "quietward-v1",
+) -> tuple[ConnectionRecord, ...]:
     records: list[ConnectionRecord] = []
     for line in text.splitlines():
         parts = line.strip().split(None, 6)
@@ -138,7 +142,9 @@ def parse_connections_output(text: str) -> tuple[ConnectionRecord, ...]:
         records.append(
             ConnectionRecord(
                 protocol=parts[0].lower(),
-                remote_address_hash=stable_hash(f"outbound:{host}", 20),
+                remote_address_hash=stable_hash(
+                    f"outbound:{host}", 20, namespace=namespace
+                ),
                 remote_port=port,
                 destination_scope=_destination_scope(host),
                 process_name=process_name,
@@ -161,7 +167,11 @@ def parse_docker_ps_ids(text: str) -> tuple[str, ...]:
     return tuple(ids)
 
 
-def parse_docker_ps_output(text: str) -> tuple[ContainerRecord, ...]:
+def parse_docker_ps_output(
+    text: str,
+    *,
+    namespace: str = "quietward-v1",
+) -> tuple[ContainerRecord, ...]:
     records = []
     for line in text.splitlines():
         if not line.strip():
@@ -176,7 +186,7 @@ def parse_docker_ps_output(text: str) -> tuple[ContainerRecord, ...]:
         image = str(row.get("Image") or "unknown")
         name = str(row.get("Names") or row.get("Name") or "unknown")
         status = str(row.get("Status") or row.get("State") or "unknown")
-        records.append(ContainerRecord(stable_hash(container_id or f"{image}|{name}", 16), image[:300], PurePosixPath(name).name[:200], status[:300]))
+        records.append(ContainerRecord(stable_hash(container_id or f"{image}|{name}", 16, namespace=namespace), image[:300], PurePosixPath(name).name[:200], status[:300]))
     return tuple(records)
 
 
@@ -259,7 +269,11 @@ def parse_docker_inspect_output(text: str, base: ContainerRecord) -> ContainerRe
     return ContainerRecord(base.container_id_hash, base.image, base.name, base.status, privileged, network or None, pid_mode or None, ipc_mode or None, readonly, no_new_privileges, capabilities, tuple(sorted(mounts)), restart_count, health, tuple(sorted(markers)), fingerprint)
 
 
-def parse_auth_journal(text: str) -> list[dict[str, object]]:
+def parse_auth_journal(
+    text: str,
+    *,
+    namespace: str = "quietward-v1",
+) -> list[dict[str, object]]:
     matches = []
     for line in text.splitlines():
         try:
@@ -279,7 +293,9 @@ def parse_auth_journal(text: str) -> list[dict[str, object]]:
         except (TypeError, ValueError, OSError):
             pass
         ip_match = _IP_PATTERN.search(message)
-        address_hash = stable_hash(ip_match.group("ip"), 16) if ip_match else "unknown"
+        address_hash = stable_hash(
+            ip_match.group("ip"), 16, namespace=namespace
+        ) if ip_match else "unknown"
         user = "unknown"
         for pattern in _USER_PATTERNS:
             found = pattern.search(message)

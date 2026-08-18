@@ -47,6 +47,18 @@ COMPATIBILITY_ROOT = Path("src") / ("forge_" + "sentinel")
 COMPATIBILITY_FILES = {
     COMPATIBILITY_ROOT / "__init__.py",
     COMPATIBILITY_ROOT / "__main__.py",
+    Path("scripts/migrate_pre_rename_user_install.py"),
+    Path("scripts/install_user_service.sh"),
+    Path("tests/test_pre_rename_migration.py"),
+    Path("docs/DEPLOYMENT.md"),
+    Path("docs/PRIVACY.md"),
+    Path("src/quietward/config.py"),
+    Path("src/quietward/collectors/privacy.py"),
+    Path("src/quietward/evidence.py"),
+    Path("src/quietward/privacy_identity.py"),
+    Path("tests/test_config.py"),
+    Path("tests/test_evidence_signing.py"),
+    Path("tests/test_privacy_identity.py"),
 }
 REQUIRED = {
     "LICENSE",
@@ -65,6 +77,7 @@ REQUIRED = {
     "scripts/build_release_candidate.ps1",
     "scripts/verify_release_bundle.py",
     "scripts/public_release_audit.py",
+    "scripts/migrate_pre_rename_user_install.py",
     "scripts/validate_release.sh",
     "scripts/install_windows.ps1",
     "scripts/uninstall_windows.ps1",

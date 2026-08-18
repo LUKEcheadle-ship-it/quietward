@@ -140,7 +140,10 @@ def _privacy_identity_check(config: SentinelConfig) -> DoctorCheck:
             True,
         )
     try:
-        PrivacyIdentity.load(path)
+        PrivacyIdentity.load(
+            path,
+            namespace=config.collector.privacy_identity_namespace,
+        )
     except ValueError as exc:
         return DoctorCheck("privacy_identity", "FAIL", str(exc), True)
     return DoctorCheck(
@@ -242,7 +245,10 @@ def _evidence_signing_checks(config: SentinelConfig) -> list[DoctorCheck]:
             )
         ]
     try:
-        signer = EvidenceSigner.load(key_path)
+        signer = EvidenceSigner.load(
+            key_path,
+            key_id_namespace=config.storage.evidence_signing_key_namespace,
+        )
     except (OSError, ValueError) as exc:
         return [
             DoctorCheck(

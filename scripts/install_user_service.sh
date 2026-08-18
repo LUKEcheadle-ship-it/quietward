@@ -2,10 +2,13 @@
 set -euo pipefail
 
 start_service=true
+migrate_pre_rename=false
 if [[ ${1:-} == "--no-start" ]]; then
   start_service=false
+elif [[ ${1:-} == "--migrate-pre-rename" ]]; then
+  migrate_pre_rename=true
 elif [[ $# -gt 0 ]]; then
-  echo "Usage: $0 [--no-start]" >&2
+  echo "Usage: $0 [--no-start|--migrate-pre-rename]" >&2
   exit 2
 fi
 
@@ -22,12 +25,42 @@ config_dir="${HOME}/.config/quietward"
 state_dir="${HOME}/.local/state/quietward"
 unit_dir="${HOME}/.config/systemd/user"
 
+migration_prepared=false
+migration_finalized=false
+legacy_service_stop_attempted=false
+rollback_migration() {
+  status="${1:-$?}"
+  trap - ERR
+  set +e
+  if ${migration_prepared} && ! ${migration_finalized}; then
+    systemctl --user disable --now quietward.service >/dev/null 2>&1
+    python3 "${repo_root}/scripts/migrate_pre_rename_user_install.py" rollback
+    systemctl --user daemon-reload
+  fi
+  if ${legacy_service_stop_attempted} && ! ${migration_finalized}; then
+    systemctl --user start forge-sentinel.service
+  fi
+  exit "${status}"
+}
+trap 'rollback_migration $?' ERR
+
+if ${migrate_pre_rename}; then
+  legacy_service_stop_attempted=true
+  systemctl --user stop forge-sentinel.service
+  if systemctl --user is-active --quiet forge-sentinel.service; then
+    echo "forge-sentinel.service did not stop cleanly" >&2
+    rollback_migration 2
+  fi
+  python3 "${repo_root}/scripts/migrate_pre_rename_user_install.py" prepare
+  migration_prepared=true
+fi
+
 mkdir -p "${app_root}" "${bin_root}" "${config_dir}" "${state_dir}" "${unit_dir}"
 chmod 700 "${install_root}" "${app_root}" "${bin_root}" "${config_dir}" "${state_dir}"
 privacy_key="${config_dir}/privacy-identity.key"
 if [[ -L "${privacy_key}" ]]; then
   echo "Refusing symlinked privacy identity key: ${privacy_key}" >&2
-  exit 2
+  rollback_migration 2
 fi
 if [[ ! -e "${privacy_key}" ]]; then
   umask 077
@@ -74,6 +107,17 @@ if ${start_service}; then
   systemctl --user enable --now quietward.service
   systemctl --user --no-pager status quietward.service || true
 fi
+
+if ${migrate_pre_rename}; then
+  if ! systemctl --user is-active --quiet quietward.service; then
+    echo "quietward.service did not become active; rolling back" >&2
+    rollback_migration 2
+  fi
+  python3 "${repo_root}/scripts/migrate_pre_rename_user_install.py" finalize
+  migration_finalized=true
+fi
+
+trap - ERR
 
 echo "QuietWard installed without network downloads or Python package dependencies."
 echo "Launcher: ${bin_root}/quietward"

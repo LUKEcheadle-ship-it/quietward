@@ -4,18 +4,20 @@ QuietWard is an offline-first, observation-only cybersecurity monitor that expla
 
 ## Release status
 
-`v0.4.0-alpha.1` is an **experimental open-source alpha**. The qualified platforms are:
+`v0.4.0-alpha.2` is an **experimental open-source alpha**. The qualified platforms are:
 
 - **Windows 11**
 - **Debian 12**
 
-Windows 10 and other Linux distributions have not completed independent qualification and are not listed as supported. QuietWard is not a replacement for Microsoft Defender or professional endpoint protection.
+Windows 10, macOS, and other Linux distributions have not completed independent qualification and are not listed as supported. QuietWard is not a replacement for Microsoft Defender or professional endpoint protection.
 
 ## What it does
 
 QuietWard monitors processes, listening ports, persistence, selected sensitive files, local security evidence, containers when available, and its own integrity. It correlates changes into findings, stores bounded local evidence, and presents the result in a read-only localhost dashboard.
 
 On Windows, it also displays read-only Microsoft Defender status. Defender evidence is labeled separately and QuietWard does not start scans or change Defender settings.
+
+![QuietWard read-only dashboard on Windows](docs/assets/quietward-windows-dashboard.png)
 
 ## Windows quick start
 
@@ -72,7 +74,9 @@ The local dashboard answers five practical questions:
 4. Why was each finding raised?
 5. Are there collector, database, privacy, or evidence-integrity problems?
 
-Finding details include severity, score, a plain-language explanation, supporting evidence, review state, and any non-executable remediation proposal. Optional collector limitations are shown as warnings rather than being presented as confirmed threats.
+Findings are grouped by semantic family so repeated hash-specific observations do not overwhelm the page. Each accessible disclosure preserves every original finding and incident link. Groups show their raw child count, highest severity, newest observation, review-state summary, and explanation. Filters retain only matching children, while the count line distinguishes groups, matching raw findings, displayed raw findings, and the database total.
+
+Finding details include severity, score, allowlisted plain-language reason explanations, escaped raw technical details, supporting evidence, review state, and any non-executable remediation proposal. Exact UTC timestamps remain available in tooltips and accessible labels. Optional collector limitations are shown as warnings rather than being presented as confirmed threats.
 
 ## Safety boundary
 
@@ -103,7 +107,7 @@ This runs tests, compilation, the public-release audit, two deterministic builds
 Verify an extracted or downloaded archive with:
 
 ```powershell
-py -3 .\scripts\verify_release_bundle.py .\dist\quietward-v0.4.0-alpha.1-source.zip
+py -3 .\scripts\verify_release_bundle.py .\dist\quietward-v0.4.0-alpha.2-source.zip
 ```
 
 Linux validation remains available through:
@@ -127,7 +131,8 @@ Start with:
 
 - `docs/FIRST_RUN.md`
 - `docs/WINDOWS.md`
-- `docs/releases/v0.4.0-alpha.1.md`
+- `docs/releases/v0.4.0-alpha.2.md`
+- `docs/INTERN_UX_ACCEPTANCE_2026_08.md`
 - `docs/PRIVACY.md`
 - `docs/SECURITY_MODEL.md`
 - `docs/EVIDENCE_INTEGRITY.md`
