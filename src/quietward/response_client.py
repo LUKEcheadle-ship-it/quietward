@@ -22,6 +22,13 @@ class ResponseClientError(RuntimeError):
     pass
 
 
+class ResponseHTTPError(ResponseClientError):
+    def __init__(self, status_code: int, detail: str) -> None:
+        self.status_code = status_code
+        self.detail = detail
+        super().__init__(f"response API HTTP {status_code}: {detail}")
+
+
 _CATEGORY_BY_KIND = {
     EventKind.PERSISTENCE_CHANGE: "persistence",
     EventKind.NEW_LISTENING_PORT: "network",
@@ -48,10 +55,30 @@ def _canonical_request(method: str, target: str, timestamp: str, nonce: str, bod
 
 
 def _atomic_json(path: Path, value: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+    """Write endpoint integration state atomically with private-file defaults."""
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     temporary = path.with_name(path.name + ".tmp")
-    temporary.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    data = (json.dumps(value, indent=2, sort_keys=True) + "\n").encode("utf-8")
+    descriptor = os.open(
+        temporary,
+        os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+        0o600,
+    )
+    try:
+        offset = 0
+        while offset < len(data):
+            written = os.write(descriptor, data[offset:])
+            if written <= 0:
+                raise OSError("short response-state write")
+            offset += written
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
     os.replace(temporary, path)
+    try:
+        path.chmod(0o600)
+    except OSError:
+        pass
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,7 +171,7 @@ class QuietWardResponseClient:
                 raw = response.read()
         except HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")[:1000]
-            raise ResponseClientError(f"response API HTTP {exc.code}: {detail}") from exc
+            raise ResponseHTTPError(exc.code, detail) from exc
         except (URLError, OSError) as exc:
             raise ResponseClientError(f"response API unavailable: {exc}") from exc
         if not raw:
@@ -153,6 +180,20 @@ class QuietWardResponseClient:
             return json.loads(raw)
         except json.JSONDecodeError as exc:
             raise ResponseClientError("response API returned invalid JSON") from exc
+
+    def _post_event(self, payload: dict[str, Any]) -> None:
+        """Submit one event, treating the server's duplicate-ID response as success.
+
+        A timeout can occur after the server commits an event but before the endpoint
+        receives the response. Retrying that event must drain the outbox rather than
+        leaving it permanently stuck on an expected 409 duplicate response.
+        """
+        try:
+            self._request("POST", "/api/v1/events", payload)
+        except ResponseHTTPError as exc:
+            if exc.status_code == 409 and "duplicate_event_id" in exc.detail:
+                return
+            raise
 
     def _event_payload(self, event: SecurityEvent, report: AnalysisReport) -> dict[str, Any]:
         assessments = {item.event_id: item for item in report.assessments}
@@ -204,7 +245,7 @@ class QuietWardResponseClient:
         sent = 0
         for index, payload in enumerate(queued):
             try:
-                self._request("POST", "/api/v1/events", payload)
+                self._post_event(payload)
                 sent += 1
             except ResponseClientError:
                 remaining.extend(queued[index:])
@@ -265,7 +306,7 @@ class QuietWardResponseClient:
             return 0, 0
         generation = str(payload["metadata"]["fixture_generation"])
         try:
-            self._request("POST", "/api/v1/events", payload)
+            self._post_event(payload)
             sent, queued = 1, 0
         except ResponseClientError:
             self._queue_event(payload)
@@ -277,15 +318,14 @@ class QuietWardResponseClient:
         return sent, queued
 
     def deliver_cycle(self, events: Iterable[SecurityEvent], report: AnalysisReport) -> dict[str, int]:
-        self.flush_outbox()
-        sent = 0
+        sent = self.flush_outbox()
         queued = 0
         for event in events:
             if event.host_id != self.config.host_id:
                 continue
             payload = self._event_payload(event, report)
             try:
-                self._request("POST", "/api/v1/events", payload)
+                self._post_event(payload)
                 sent += 1
             except ResponseClientError:
                 self._queue_event(payload)
@@ -305,7 +345,7 @@ class QuietWardResponseClient:
     def _save_ledger(self, value: dict[str, dict[str, Any]]) -> None:
         _atomic_json(self.ledger_path, value)
 
-    def _restart_demo_service(self) -> dict[str, Any]:
+    def _restart_demo_service(self, action_id: str) -> dict[str, Any]:
         path = self.demo_state_path
         if path.name != "quietward-response-demo.json" or not path.exists():
             raise ResponseClientError("dedicated QuietWard Response demo fixture is not initialized")
@@ -315,12 +355,19 @@ class QuietWardResponseClient:
             raise ResponseClientError("demo fixture state is unreadable") from exc
         if state.get("service") != "quietward-response-demo":
             raise ResponseClientError("refusing to modify a non-demo service fixture")
-        before = dict(state)
+        if state.get("last_action_id") == action_id and isinstance(state.get("last_action_result"), dict):
+            return dict(state["last_action_result"])
+
+        before = {key: value for key, value in state.items() if key != "last_action_result"}
         state["status"] = "running"
         state["restart_count"] = int(state.get("restart_count", 0)) + 1
         state["last_restarted_at"] = datetime.now(timezone.utc).isoformat()
+        state["last_action_id"] = action_id
+        after = {key: value for key, value in state.items() if key != "last_action_result"}
+        result = {"before": before, "after": after}
+        state["last_action_result"] = result
         _atomic_json(path, state)
-        return {"before": before, "after": state}
+        return result
 
     def initialize_demo_fixture(self, *, unhealthy: bool = True) -> Path:
         state = {
@@ -329,6 +376,8 @@ class QuietWardResponseClient:
             "restart_count": 0,
             "created_at": datetime.now(timezone.utc).isoformat(),
             "last_emitted_generation": None,
+            "last_action_id": None,
+            "last_action_result": None,
         }
         _atomic_json(self.demo_state_path, state)
         return self.demo_state_path
@@ -342,7 +391,10 @@ class QuietWardResponseClient:
             raise ResponseClientError("allowlisted demo action accepts no parameters")
         if action.get("action_type") != "restart_quietward_demo_service":
             raise ResponseClientError("action type is not allowlisted by this QuietWard build")
-        return self._restart_demo_service()
+        action_id = str(action.get("action_id") or "")
+        if not action_id:
+            raise ResponseClientError("action id is required")
+        return self._restart_demo_service(action_id)
 
     def _post_result(self, action_id: str, status: str, result: dict[str, Any], error: str | None = None) -> Any:
         now = datetime.now(timezone.utc).isoformat()
@@ -384,7 +436,16 @@ class QuietWardResponseClient:
                     prior.get("error"),
                 )
                 continue
+
+            # Persist execution intent before the server transition or local state change.
+            # Combined with the demo fixture's action-id marker this closes the crash
+            # window that could otherwise cause the same action to be applied twice.
+            ledger[action_id] = {"status": "executing", "result": {}, "error": None}
+            self._save_ledger(ledger)
             self._post_result(action_id, "executing", {})
+
+            state_before = self._load_demo_state()
+            already_applied = bool(state_before and state_before.get("last_action_id") == action_id)
             try:
                 result = self._execute_action(action)
                 final = {"status": "succeeded", "result": result, "error": None}
@@ -398,5 +459,6 @@ class QuietWardResponseClient:
                 dict(final["result"]),
                 final["error"],
             )
-            executed += 1
+            if not already_applied:
+                executed += 1
         return executed
