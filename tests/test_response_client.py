@@ -5,7 +5,7 @@ import os
 import stat
 import tempfile
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -17,6 +17,35 @@ from quietward.response_client import (
     ResponseClientError,
     ResponseHTTPError,
 )
+
+
+def _server_action_payload(action: dict) -> dict:
+    """Hydrate compact test overrides into the real Response ActionRead shape."""
+    now = datetime.now(timezone.utc)
+    payload = {
+        "schema_version": "1.0",
+        "action_id": "action-test",
+        "incident_id": "incident-test",
+        "target_agent_id": "agent-test",
+        "target_host_id": "host-test",
+        "action_type": "restart_quietward_demo_service",
+        "parameters": {},
+        "requested_at": (now - timedelta(seconds=5)).isoformat(),
+        "requested_by": "analyst-test",
+        "approval_id": "approval-test",
+        "expires_at": (now + timedelta(minutes=5)).isoformat(),
+        "status": "dispatching",
+        "policy_allowed": True,
+        "policy_reasons": [],
+        "dispatched_at": now.isoformat(),
+        "started_at": None,
+        "completed_at": None,
+        "result": None,
+        "error": None,
+        "evidence": None,
+    }
+    payload.update(action)
+    return payload
 
 
 class FakeResponseClient(QuietWardResponseClient):
@@ -31,7 +60,7 @@ class FakeResponseClient(QuietWardResponseClient):
         if target == "/api/v1/events" and self.fail_events:
             raise ResponseClientError("offline")
         if target.endswith("/actions/pending"):
-            return list(self.pending_actions)
+            return [_server_action_payload(item) for item in self.pending_actions]
         return {"ok": True}
 
 
@@ -41,7 +70,7 @@ class DuplicateEventResponseClient(FakeResponseClient):
         if target == "/api/v1/events":
             raise ResponseHTTPError(409, '{"detail":{"code":"duplicate_event_id"}}')
         if target.endswith("/actions/pending"):
-            return list(self.pending_actions)
+            return [_server_action_payload(item) for item in self.pending_actions]
         return {"ok": True}
 
 
