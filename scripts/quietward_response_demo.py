@@ -4,8 +4,24 @@ from __future__ import annotations
 import argparse
 import json
 import socket
+from pathlib import Path
 
+from quietward.config import load_config
 from quietward.response_client import QuietWardResponseClient
+
+
+def _resolve_state_dir(explicit: str | None, config_path: Path) -> Path | None:
+    if explicit:
+        path = Path(explicit).expanduser()
+        if not path.is_absolute():
+            raise SystemExit("--state-dir must resolve to an absolute path")
+        return path
+    if config_path.exists():
+        try:
+            return load_config(config_path).state_dir
+        except ValueError as exc:
+            raise SystemExit(f"Cannot load QuietWard config for demo state: {exc}") from exc
+    return None
 
 
 def main() -> int:
@@ -14,9 +30,23 @@ def main() -> int:
     )
     parser.add_argument("command", choices=("init-unhealthy", "status", "sync"))
     parser.add_argument("--host-id", default=socket.gethostname())
+    parser.add_argument(
+        "--config",
+        default=str(Path("~/.config/quietward/config.json").expanduser()),
+        help="QuietWard config used to locate its state directory when present",
+    )
+    parser.add_argument(
+        "--state-dir",
+        help="Explicit QuietWard Response state directory; overrides the config path",
+    )
     args = parser.parse_args()
 
-    client = QuietWardResponseClient.from_environment(host_id=args.host_id)
+    config_path = Path(args.config).expanduser()
+    state_dir = _resolve_state_dir(args.state_dir, config_path)
+    client = QuietWardResponseClient.from_environment(
+        host_id=args.host_id,
+        default_state_dir=state_dir,
+    )
     if client is None:
         raise SystemExit(
             "QuietWard Response integration is disabled. Set "
