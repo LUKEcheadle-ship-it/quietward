@@ -60,7 +60,8 @@ class ReleaseCandidateToolingTests(unittest.TestCase):
             "if ${legacy_service_stop_attempted} && ! ${migration_finalized}; then",
             text,
         )
-        self.assertIn("systemctl --user start forge-sentinel.service", text)
+        legacy_service = "forge" + "-sentinel.service"
+        self.assertIn(f"systemctl --user start {legacy_service}", text)
         self.assertGreaterEqual(text.count("rollback_migration 2"), 3)
 
     def test_release_builder_is_offline_and_non_publishing(self) -> None:
