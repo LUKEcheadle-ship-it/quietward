@@ -332,8 +332,14 @@ class SentinelService:
             "error": error,
             "storage": self.store.summary(),
             "safety": {
-                "mode": "observe_only_with_optional_demo_response",
+                # Preserve the established public safety mode string for existing users/tests.
+                "mode": "observe_only",
                 "actions_executed": 0,
+                "response_mode": (
+                    "demo_fixture_only_allowlisted"
+                    if self.response_client is not None
+                    else "disabled"
+                ),
                 "response_demo_actions_executed": (
                     current_result.response_demo_actions_executed if current_result else 0
                 ),
