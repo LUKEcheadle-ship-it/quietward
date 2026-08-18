@@ -6,7 +6,8 @@ This checklist separates completed product qualification from final publication 
 
 ## Source gates
 
-- [x] Windows 11 unit suite passed on the final candidate: 158 run, 153 passed, 0 failed, and 5 expected platform-dependent skips.
+- [x] Windows 11 unit suite passed on the final candidate: 160 run, 155 passed, 0 failed, and 5 expected platform-dependent skips.
+- [x] Debian 12 unit suite passed on the final candidate: 160 run, 160 passed, 0 failed, and 0 skipped.
 - [x] Python source, tests and scripts compiled on the Windows qualification host.
 - [x] Public-release audit reported zero blockers on the Windows qualification host.
 - [x] Supported Windows current-user installation, in-place upgrade and native qualification passed.
@@ -17,7 +18,8 @@ This checklist separates completed product qualification from final publication 
 - [x] Reran compilation, unit tests, release audit and native installer parsing on the final QuietWard candidate.
 - [x] Built the release candidate twice and confirmed identical SHA-256 values.
 - [x] Verified the final archive using `scripts/verify_release_bundle.py`.
-- [x] Recorded the final commit, archive name, size and SHA-256 in the pull-request qualification record.
+- [x] Final archive contains 142 source files plus its release manifest and is 341400 bytes.
+- [x] Recorded the final commit, archive name and SHA-256 in the checksum sidecar and pull-request qualification record.
 
 ## Safety gates
 
