@@ -9,6 +9,7 @@ from .integrations.ollama import OllamaIncidentExplainer
 from .integrity import SelfIntegrityMonitor
 from .models import HybridRiskScorer, LinearPriorityModel
 from .pipeline import SentinelPipeline
+from .response_client import QuietWardResponseClient
 from .service import SentinelService
 
 
@@ -66,5 +67,8 @@ def build_service(config: SentinelConfig) -> SentinelService:
     )
     service.integrity_monitor = build_integrity_monitor(
         config, service.collector.host_id
+    )
+    service.response_client = QuietWardResponseClient.from_environment(
+        host_id=service.collector.host_id
     )
     return service
