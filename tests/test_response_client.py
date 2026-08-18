@@ -97,7 +97,10 @@ class ResponseClientTests(unittest.TestCase):
             self.assertEqual(payload["source"], "quietward")
             self.assertEqual(payload["host_id"], "host-test")
             self.assertEqual(payload["event_type"], "process_start")
-            self.assertEqual(payload["metadata"]["original_quietward_event_id"], "event-local-id")
+            self.assertEqual(
+                payload["metadata"]["original_quietward_event_id"],
+                "event-local-id",
+            )
             # Response requires UUID event IDs even though QuietWard local IDs may use another format.
             self.assertNotEqual(payload["event_id"], "event-local-id")
 
@@ -118,7 +121,10 @@ class ResponseClientTests(unittest.TestCase):
             self.assertEqual(result["queued"], 1)
             queued = json.loads(client.outbox_path.read_text(encoding="utf-8"))
             self.assertEqual(len(queued), 1)
-            self.assertEqual(queued[0]["metadata"]["original_quietward_event_id"], "event-offline")
+            self.assertEqual(
+                queued[0]["metadata"]["original_quietward_event_id"],
+                "event-offline",
+            )
 
     def test_duplicate_server_event_is_treated_as_successful_retry(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -136,7 +142,32 @@ class ResponseClientTests(unittest.TestCase):
             }
             client._queue_event(payload)
             self.assertEqual(client.flush_outbox(), 1)
-            self.assertEqual(json.loads(client.outbox_path.read_text(encoding="utf-8")), [])
+            self.assertEqual(
+                json.loads(client.outbox_path.read_text(encoding="utf-8")),
+                [],
+            )
+
+    def test_corrupt_outbox_fails_closed_without_overwrite(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            client = self.client(Path(temporary))
+            client.outbox_path.write_text("{not-json\n", encoding="utf-8")
+            before = client.outbox_path.read_bytes()
+            with self.assertRaisesRegex(ResponseClientError, "outbox"):
+                client._queue_event({"event_id": "new-event"})
+            self.assertEqual(client.outbox_path.read_bytes(), before)
+
+    def test_full_outbox_preserves_existing_events_and_reports_capacity(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            client = self.client(Path(temporary))
+            existing = [{"event_id": f"queued-{index}"} for index in range(1000)]
+            client.outbox_path.write_text(
+                json.dumps(existing),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ResponseClientError, "capacity reached"):
+                client._queue_event({"event_id": "overflow"})
+            stored = json.loads(client.outbox_path.read_text(encoding="utf-8"))
+            self.assertEqual(stored, existing)
 
     def test_response_state_files_are_private_on_posix(self) -> None:
         if os.name == "nt":
@@ -144,8 +175,15 @@ class ResponseClientTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             client = self.client(Path(temporary))
             client.initialize_demo_fixture(unhealthy=True)
-            mode = stat.S_IMODE(client.demo_state_path.stat().st_mode)
-            self.assertEqual(mode, 0o600)
+            client._queue_event({"event_id": "permission-test"})
+            client._save_ledger({"action": {"status": "executing"}})
+            for path in (
+                client.demo_state_path,
+                client.outbox_path,
+                client.ledger_path,
+            ):
+                mode = stat.S_IMODE(path.stat().st_mode)
+                self.assertEqual(mode, 0o600)
 
     def test_unhealthy_demo_fixture_emits_exactly_one_generation_event(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -162,6 +200,13 @@ class ResponseClientTests(unittest.TestCase):
             assert payload is not None
             self.assertEqual(payload["event_type"], "quietward_demo_service_unhealthy")
             self.assertTrue(payload["metadata"]["demo_only"])
+
+    def test_corrupt_demo_fixture_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            client = self.client(Path(temporary))
+            client.demo_state_path.write_text("not-json", encoding="utf-8")
+            with self.assertRaisesRegex(ResponseClientError, "demo fixture"):
+                client.deliver_cycle([], SentinelPipeline().analyze([]))
 
     def test_demo_action_accepts_no_arbitrary_target_or_parameters(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -207,13 +252,40 @@ class ResponseClientTests(unittest.TestCase):
             self.assertEqual(first_state["status"], "running")
             self.assertEqual(first_state["restart_count"], 1)
             self.assertEqual(first_state["last_action_id"], "action-once")
-            self.assertEqual(unrelated.read_text(encoding="utf-8"), '{"status":"do-not-touch"}\n')
+            self.assertEqual(
+                unrelated.read_text(encoding="utf-8"),
+                '{"status":"do-not-touch"}\n',
+            )
 
             # Server may return the same action again after a transient response failure.
             # The durable local ledger must return the saved result without executing twice.
             self.assertEqual(client.poll_and_execute(), 0)
             second_state = json.loads(fixture.read_text(encoding="utf-8"))
             self.assertEqual(second_state["restart_count"], 1)
+
+    def test_corrupt_action_ledger_fails_closed_before_execution(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            client = self.client(root)
+            fixture = client.initialize_demo_fixture(unhealthy=True)
+            client.ledger_path.write_text("{broken", encoding="utf-8")
+            client.pending_actions = [
+                {
+                    "schema_version": "1.0",
+                    "action_id": "action-ledger-corrupt",
+                    "incident_id": "incident-test",
+                    "target_agent_id": "agent-test",
+                    "target_host_id": "host-test",
+                    "action_type": "restart_quietward_demo_service",
+                    "parameters": {},
+                    "status": "dispatching",
+                }
+            ]
+            with self.assertRaisesRegex(ResponseClientError, "ledger"):
+                client.poll_and_execute()
+            state = json.loads(fixture.read_text(encoding="utf-8"))
+            self.assertEqual(state["status"], "unhealthy")
+            self.assertEqual(state["restart_count"], 0)
 
     def test_crash_recovery_does_not_reapply_action_after_fixture_write(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -235,7 +307,13 @@ class ResponseClientTests(unittest.TestCase):
             # terminal ledger/result was persisted to Response.
             first_result = client._execute_action(action)
             client._save_ledger(
-                {"action-crash-window": {"status": "executing", "result": {}, "error": None}}
+                {
+                    "action-crash-window": {
+                        "status": "executing",
+                        "result": {},
+                        "error": None,
+                    }
+                }
             )
             client.pending_actions = [action]
 
