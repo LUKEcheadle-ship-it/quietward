@@ -69,6 +69,7 @@ def build_service(config: SentinelConfig) -> SentinelService:
         config, service.collector.host_id
     )
     service.response_client = QuietWardResponseClient.from_environment(
-        host_id=service.collector.host_id
+        host_id=service.collector.host_id,
+        default_state_dir=config.state_dir,
     )
     return service
