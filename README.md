@@ -102,10 +102,12 @@ When explicitly enabled, QuietWard can:
 
 - send its own event observations to QuietWard Response using HMAC-SHA256 authenticated requests;
 - queue delivery locally if Response is temporarily unavailable;
+- treat an already-accepted duplicate event ID as successful retry completion, preventing a lost HTTP response from wedging the outbox;
 - poll outbound for actions that Response has already stored, approved, and policy-validated;
 - validate the target, action type, and parameters again on the endpoint;
 - return a signed typed result;
-- keep a durable local action ledger so a completed action ID is not executed twice.
+- persist execution intent and a terminal action ledger;
+- mark the dedicated demo fixture with the applied action ID/result so recovery cannot change the fixture twice.
 
 Enablement is environment-driven and off by default:
 
@@ -117,7 +119,7 @@ QUIETWARD_RESPONSE_KEY_ID=...
 QUIETWARD_RESPONSE_SECRET=...
 ```
 
-The Phase 2 branch deliberately recognizes only one executable response action: `restart_quietward_demo_service`. Despite the name, it does **not** control a real operating-system service. It changes only the dedicated QuietWard-owned state file `quietward-response-demo.json`. It accepts no service name, command, path, process ID, or other arbitrary target.
+The v1 integration branch deliberately recognizes only one executable response action: `restart_quietward_demo_service`. Despite the name, it does **not** control a real operating-system service. It changes only the dedicated QuietWard-owned state file `quietward-response-demo.json`. It accepts no service name, command, path, process ID, or other arbitrary target.
 
 For a safe end-to-end demo after enrollment:
 
@@ -128,7 +130,7 @@ python scripts/quietward_response_demo.py sync --host-id YOUR_HOST_ID
 
 The first sync sends an authenticated synthetic health event for that dedicated fixture. After an analyst prepares and approves the allowlisted response in the QuietWard Response incident console, run `sync` again to poll, execute the demo-only state transition, and return the result.
 
-If Response is disabled or unreachable, QuietWard continues its local monitoring path. The main service catches optional integration failures rather than converting them into local service failure. No shell, PowerShell, `cmd`, service manager, process kill, firewall, file deletion, quarantine, or host isolation capability is introduced by this Phase 2 bridge.
+If Response is disabled or unreachable, QuietWard continues its local monitoring path. The main service catches optional integration failures rather than converting them into local service failure. No shell, PowerShell, `cmd`, service manager, process kill, firewall, file deletion, quarantine, or host isolation capability is introduced by this bridge.
 
 ## Build and verify a release candidate
 
