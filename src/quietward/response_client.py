@@ -212,6 +212,70 @@ class QuietWardResponseClient:
         _atomic_json(self.outbox_path, remaining)
         return sent
 
+    def _load_demo_state(self) -> dict[str, Any] | None:
+        if not self.demo_state_path.exists():
+            return None
+        try:
+            state = json.loads(self.demo_state_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        if not isinstance(state, dict) or state.get("service") != "quietward-response-demo":
+            return None
+        return state
+
+    def _demo_fixture_event_payload(self, state: dict[str, Any]) -> dict[str, Any] | None:
+        if state.get("status") != "unhealthy":
+            return None
+        restart_count = int(state.get("restart_count", 0))
+        generation = f"{state.get('created_at', 'unknown')}:{restart_count}"
+        if state.get("last_emitted_generation") == generation:
+            return None
+        event_id = str(uuid5(NAMESPACE_URL, f"quietward-demo:{self.config.host_id}:{generation}"))
+        return {
+            "schema_version": "1.0",
+            "event_id": event_id,
+            "source": "quietward",
+            "source_version": "0.4.0a2",
+            "host_id": self.config.host_id,
+            "host_name": platform.node() or self.config.host_id,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "event_type": "quietward_demo_service_unhealthy",
+            "category": "operational",
+            "severity": "medium",
+            "confidence": 1.0,
+            "summary": "Dedicated QuietWard Response demo service fixture is unhealthy",
+            "evidence": {
+                "demo_fixture": True,
+                "status": "unhealthy",
+                "restart_count": restart_count,
+            },
+            "metadata": {
+                "operating_system": platform.system() or "unknown",
+                "demo_only": True,
+                "fixture_generation": generation,
+            },
+        }
+
+    def _deliver_demo_fixture_event(self) -> tuple[int, int]:
+        state = self._load_demo_state()
+        if state is None:
+            return 0, 0
+        payload = self._demo_fixture_event_payload(state)
+        if payload is None:
+            return 0, 0
+        generation = str(payload["metadata"]["fixture_generation"])
+        try:
+            self._request("POST", "/api/v1/events", payload)
+            sent, queued = 1, 0
+        except ResponseClientError:
+            self._queue_event(payload)
+            sent, queued = 0, 1
+        # Mark the generation after either durable queueing or successful delivery.
+        # This avoids producing the same event repeatedly while offline.
+        state["last_emitted_generation"] = generation
+        _atomic_json(self.demo_state_path, state)
+        return sent, queued
+
     def deliver_cycle(self, events: Iterable[SecurityEvent], report: AnalysisReport) -> dict[str, int]:
         self.flush_outbox()
         sent = 0
@@ -226,7 +290,8 @@ class QuietWardResponseClient:
             except ResponseClientError:
                 self._queue_event(payload)
                 queued += 1
-        return {"sent": sent, "queued": queued}
+        demo_sent, demo_queued = self._deliver_demo_fixture_event()
+        return {"sent": sent + demo_sent, "queued": queued + demo_queued}
 
     def _load_ledger(self) -> dict[str, dict[str, Any]]:
         if not self.ledger_path.exists():
@@ -263,6 +328,7 @@ class QuietWardResponseClient:
             "status": "unhealthy" if unhealthy else "running",
             "restart_count": 0,
             "created_at": datetime.now(timezone.utc).isoformat(),
+            "last_emitted_generation": None,
         }
         _atomic_json(self.demo_state_path, state)
         return self.demo_state_path
