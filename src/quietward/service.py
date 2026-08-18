@@ -9,7 +9,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 from .alerts import LocalAlertSink
 from .collectors import CollectionBatch, build_collector
@@ -21,6 +21,9 @@ from .locking import SingleInstanceLock
 from .pipeline import SentinelPipeline
 from .scanners import ScannerExecutor
 from .storage import PersistResult, SentinelStore
+
+if TYPE_CHECKING:
+    from .response_client import QuietWardResponseClient
 
 
 def _atomic_json(path: Path, value: dict[str, Any]) -> None:
@@ -62,6 +65,9 @@ class ServiceCycleResult:
     alerts_emitted: int
     scanner_runs: int
     errors: tuple[str, ...]
+    response_events_sent: int = 0
+    response_events_queued: int = 0
+    response_demo_actions_executed: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -82,6 +88,10 @@ class ServiceCycleResult:
             "events_inserted": self.persist.events_inserted,
             "findings_inserted": self.persist.findings_inserted,
             "chain_hash": self.persist.chain_hash,
+            "response_events_sent": self.response_events_sent,
+            "response_events_queued": self.response_events_queued,
+            "response_demo_actions_executed": self.response_demo_actions_executed,
+            # QuietWard still performs no general host remediation in this mode.
             "actions_executed": 0,
         }
 
@@ -97,6 +107,7 @@ class SentinelService:
         scanner_executor=None,
         alert_sink=None,
         integrity_monitor: SelfIntegrityMonitor | None = None,
+        response_client: QuietWardResponseClient | None = None,
         sleeper: Callable[[float], None] = time.sleep,
         clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
     ) -> None:
@@ -111,6 +122,7 @@ class SentinelService:
             config.storage.alert_log_path
         )
         self.integrity_monitor = integrity_monitor
+        self.response_client = response_client
         self.sleeper = sleeper
         self.clock = clock
         self.stop_event = threading.Event()
@@ -224,18 +236,35 @@ class SentinelService:
         if integrity_manifest is not None:
             self.store.set_integrity_manifest(integrity_manifest)
         alerts = self.alert_sink.emit_pending(self.store)
+
+        response_sent = 0
+        response_queued = 0
+        response_demo_actions = 0
+        if self.response_client is not None:
+            try:
+                delivery = self.response_client.deliver_cycle(kept, report)
+                response_sent = int(delivery.get("sent", 0))
+                response_queued = int(delivery.get("queued", 0))
+                response_demo_actions = self.response_client.poll_and_execute()
+            except Exception as exc:
+                # Response is optional: remote failure never stops local monitoring.
+                errors.append(f"optional response integration: {str(exc)[:300]}")
+
         result = ServiceCycleResult(
-            started,
-            completed,
-            persisted,
-            len(collector_batch.events),
-            len(scanner_events),
-            len(integrity_events) + len(extra_events),
-            len(suppressed),
-            len(report.findings),
-            alerts,
-            scanner_runs,
-            tuple(errors),
+            started_at=started,
+            completed_at=completed,
+            persist=persisted,
+            collector_events=len(collector_batch.events),
+            scanner_events=len(scanner_events),
+            integrity_events=len(integrity_events) + len(extra_events),
+            suppressed_events=len(suppressed),
+            findings=len(report.findings),
+            alerts_emitted=alerts,
+            scanner_runs=scanner_runs,
+            errors=tuple(errors),
+            response_events_sent=response_sent,
+            response_events_queued=response_queued,
+            response_demo_actions_executed=response_demo_actions,
         )
         self.last_result = result
         self._write_health("healthy", result=result)
@@ -290,6 +319,7 @@ class SentinelService:
         result=None,
         error=None,
     ) -> None:
+        current_result = result or self.last_result
         value = {
             "service": "quietward",
             "status": status,
@@ -298,16 +328,16 @@ class SentinelService:
             .isoformat()
             .replace("+00:00", "Z"),
             "consecutive_failures": self.consecutive_failures,
-            "last_cycle": (
-                (result or self.last_result).to_dict()
-                if (result or self.last_result)
-                else None
-            ),
+            "last_cycle": current_result.to_dict() if current_result else None,
             "error": error,
             "storage": self.store.summary(),
             "safety": {
-                "mode": "observe_only",
+                "mode": "observe_only_with_optional_demo_response",
                 "actions_executed": 0,
+                "response_demo_actions_executed": (
+                    current_result.response_demo_actions_executed if current_result else 0
+                ),
+                "response_integration_enabled": self.response_client is not None,
                 "shell_used": False,
                 "sudo_used": False,
                 "system_state_modified": False,
