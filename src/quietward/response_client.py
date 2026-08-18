@@ -45,6 +45,43 @@ _CATEGORY_BY_KIND = {
 }
 
 _OUTBOX_MAX_EVENTS = 1000
+_ALLOWED_ACTION_FIELDS = {
+    "schema_version",
+    "action_id",
+    "incident_id",
+    "target_agent_id",
+    "target_host_id",
+    "action_type",
+    "parameters",
+    "requested_at",
+    "requested_by",
+    "approval_id",
+    "expires_at",
+    "status",
+    "policy_allowed",
+    "policy_reasons",
+    "dispatched_at",
+    "started_at",
+    "completed_at",
+    "result",
+    "error",
+    "evidence",
+}
+_REQUIRED_ACTION_FIELDS = {
+    "schema_version",
+    "action_id",
+    "incident_id",
+    "target_agent_id",
+    "target_host_id",
+    "action_type",
+    "parameters",
+    "requested_at",
+    "requested_by",
+    "approval_id",
+    "expires_at",
+    "status",
+    "policy_allowed",
+}
 
 
 def _derive_hmac_key(secret: str) -> bytes:
@@ -81,6 +118,21 @@ def _atomic_json(path: Path, value: Any) -> None:
         path.chmod(0o600)
     except OSError:
         pass
+
+
+def _parse_utc_timestamp(value: Any, field_name: str) -> datetime:
+    if not isinstance(value, str) or not value.strip():
+        raise ResponseClientError(f"action {field_name} must be a timezone-aware timestamp")
+    text = value.strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError as exc:
+        raise ResponseClientError(f"action {field_name} is not a valid timestamp") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ResponseClientError(f"action {field_name} must include a timezone")
+    return parsed.astimezone(timezone.utc)
 
 
 @dataclass(frozen=True, slots=True)
@@ -390,12 +442,75 @@ class QuietWardResponseClient:
         _atomic_json(self.demo_state_path, state)
         return self.demo_state_path
 
-    def _execute_action(self, action: dict[str, Any]) -> dict[str, Any]:
+    def _local_action_history(self, action_id: str, ledger: dict[str, dict[str, Any]]) -> bool:
+        prior = ledger.get(action_id)
+        if prior and prior.get("status") in {"executing", "succeeded", "failed"}:
+            return True
+        state = self._load_demo_state()
+        return bool(state and state.get("last_action_id") == action_id)
+
+    def _validate_polled_action(
+        self,
+        action: dict[str, Any],
+        ledger: dict[str, dict[str, Any]],
+    ) -> str:
+        extra = set(action) - _ALLOWED_ACTION_FIELDS
+        if extra:
+            raise ResponseClientError(
+                "pending action contains unsupported fields: " + ", ".join(sorted(extra))
+            )
+        missing = _REQUIRED_ACTION_FIELDS - set(action)
+        if missing:
+            raise ResponseClientError(
+                "pending action is missing required fields: " + ", ".join(sorted(missing))
+            )
+        if action.get("schema_version") != "1.0":
+            raise ResponseClientError("action schema version is not supported")
         if action.get("target_agent_id") != self.config.agent_id:
             raise ResponseClientError("action targets another agent")
         if action.get("target_host_id") != self.config.host_id:
             raise ResponseClientError("action targets another host")
-        if action.get("parameters") not in ({}, None):
+        if action.get("action_type") != "restart_quietward_demo_service":
+            raise ResponseClientError("action type is not allowlisted by this QuietWard build")
+        if action.get("parameters") != {}:
+            raise ResponseClientError("allowlisted demo action accepts no parameters")
+        if action.get("policy_allowed") is not True:
+            raise ResponseClientError("action was not policy-allowed by Response")
+
+        status = action.get("status")
+        if status not in {"dispatching", "executing"}:
+            raise ResponseClientError("action lifecycle status is not deliverable")
+
+        action_id = action.get("action_id")
+        if not isinstance(action_id, str) or not action_id or len(action_id) > 128:
+            raise ResponseClientError("action id is invalid")
+        for field_name in ("incident_id", "approval_id", "requested_by"):
+            value = action.get(field_name)
+            if not isinstance(value, str) or not value.strip():
+                raise ResponseClientError(f"action {field_name} is required")
+
+        requested_at = _parse_utc_timestamp(action.get("requested_at"), "requested_at")
+        expires_at = _parse_utc_timestamp(action.get("expires_at"), "expires_at")
+        if expires_at <= requested_at:
+            raise ResponseClientError("action expiry must be later than request time")
+
+        has_local_history = self._local_action_history(action_id, ledger)
+        if status == "executing" and not has_local_history:
+            raise ResponseClientError(
+                "server returned executing action without matching local execution intent"
+            )
+        if status == "dispatching" and expires_at <= datetime.now(timezone.utc) and not has_local_history:
+            raise ResponseClientError("action expired before endpoint execution began")
+        return action_id
+
+    def _execute_action(self, action: dict[str, Any]) -> dict[str, Any]:
+        # Revalidate the narrow executor boundary even though poll validation has
+        # already run. This keeps direct/internal calls fail-closed as well.
+        if action.get("target_agent_id") != self.config.agent_id:
+            raise ResponseClientError("action targets another agent")
+        if action.get("target_host_id") != self.config.host_id:
+            raise ResponseClientError("action targets another host")
+        if action.get("parameters") != {}:
             raise ResponseClientError("allowlisted demo action accepts no parameters")
         if action.get("action_type") != "restart_quietward_demo_service":
             raise ResponseClientError("action type is not allowlisted by this QuietWard build")
@@ -431,10 +546,8 @@ class QuietWardResponseClient:
         executed = 0
         for action in actions:
             if not isinstance(action, dict):
-                continue
-            action_id = str(action.get("action_id") or "")
-            if not action_id:
-                continue
+                raise ResponseClientError("pending action response contains a non-object item")
+            action_id = self._validate_polled_action(action, ledger)
             prior = ledger.get(action_id)
             if prior and prior.get("status") in {"succeeded", "failed"}:
                 self._post_result(
