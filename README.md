@@ -104,7 +104,9 @@ When explicitly enabled, QuietWard can:
 - queue delivery locally if Response is temporarily unavailable;
 - treat an already-accepted duplicate event ID as successful retry completion, preventing a lost HTTP response from wedging the outbox;
 - poll outbound for actions that Response has already stored, approved, and policy-validated;
-- validate the target, action type, and parameters again on the endpoint;
+- validate the action schema version, required/allowed fields, policy decision, lifecycle state, expiry, target agent, target host, action type, and parameters again on the endpoint;
+- refuse a new dispatch that has already expired;
+- refuse a server-only `executing` recovery unless matching local execution intent or the exact fixture action marker exists;
 - return a signed typed result;
 - persist execution intent and a terminal action ledger;
 - mark the dedicated demo fixture with the applied action ID/result so recovery cannot change the fixture twice.
@@ -130,7 +132,7 @@ python scripts/quietward_response_demo.py sync --host-id YOUR_HOST_ID
 
 The first sync sends an authenticated synthetic health event for that dedicated fixture. After an analyst prepares and approves the allowlisted response in the QuietWard Response incident console, run `sync` again to poll, execute the demo-only state transition, and return the result.
 
-If Response is disabled or unreachable, QuietWard continues its local monitoring path. The main service catches optional integration failures rather than converting them into local service failure. No shell, PowerShell, `cmd`, service manager, process kill, firewall, file deletion, quarantine, or host isolation capability is introduced by this bridge.
+If Response is disabled or unreachable, QuietWard continues its local monitoring path. The main service catches optional integration failures rather than converting them into local service failure. A malformed, stale, unapproved, wrongly targeted, or otherwise unsupported polled action fails closed before the demo fixture changes. No shell, PowerShell, `cmd`, service manager, process kill, firewall, file deletion, quarantine, or host isolation capability is introduced by this bridge.
 
 ## Build and verify a release candidate
 
