@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 import tempfile
 import unittest
 from datetime import datetime, timezone
@@ -14,6 +15,7 @@ from quietward.response_client import (
     QuietWardResponseClient,
     ResponseClientConfig,
     ResponseClientError,
+    ResponseHTTPError,
 )
 
 
@@ -33,6 +35,16 @@ class FakeResponseClient(QuietWardResponseClient):
         return {"ok": True}
 
 
+class DuplicateEventResponseClient(FakeResponseClient):
+    def _request(self, method: str, target: str, payload: dict | None = None):
+        self.calls.append((method, target, payload))
+        if target == "/api/v1/events":
+            raise ResponseHTTPError(409, '{"detail":{"code":"duplicate_event_id"}}')
+        if target.endswith("/actions/pending"):
+            return list(self.pending_actions)
+        return {"ok": True}
+
+
 class ResponseClientTests(unittest.TestCase):
     def client(self, root: Path, host_id: str = "host-test") -> FakeResponseClient:
         return FakeResponseClient(
@@ -42,6 +54,18 @@ class ResponseClientTests(unittest.TestCase):
                 key_id="key-test",
                 secret="secret-test",
                 host_id=host_id,
+                state_dir=root,
+            )
+        )
+
+    def duplicate_client(self, root: Path) -> DuplicateEventResponseClient:
+        return DuplicateEventResponseClient(
+            ResponseClientConfig(
+                base_url="http://127.0.0.1:8002",
+                agent_id="agent-test",
+                key_id="key-test",
+                secret="secret-test",
+                host_id="host-test",
                 state_dir=root,
             )
         )
@@ -95,6 +119,33 @@ class ResponseClientTests(unittest.TestCase):
             queued = json.loads(client.outbox_path.read_text(encoding="utf-8"))
             self.assertEqual(len(queued), 1)
             self.assertEqual(queued[0]["metadata"]["original_quietward_event_id"], "event-offline")
+
+    def test_duplicate_server_event_is_treated_as_successful_retry(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            client = self.duplicate_client(root)
+            payload = {
+                "schema_version": "1.0",
+                "event_id": "already-accepted",
+                "source": "quietward",
+                "host_id": "host-test",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "event_type": "file_change",
+                "severity": "medium",
+                "summary": "retry",
+            }
+            client._queue_event(payload)
+            self.assertEqual(client.flush_outbox(), 1)
+            self.assertEqual(json.loads(client.outbox_path.read_text(encoding="utf-8")), [])
+
+    def test_response_state_files_are_private_on_posix(self) -> None:
+        if os.name == "nt":
+            self.skipTest("POSIX file mode semantics do not apply on Windows")
+        with tempfile.TemporaryDirectory() as temporary:
+            client = self.client(Path(temporary))
+            client.initialize_demo_fixture(unhealthy=True)
+            mode = stat.S_IMODE(client.demo_state_path.stat().st_mode)
+            self.assertEqual(mode, 0o600)
 
     def test_unhealthy_demo_fixture_emits_exactly_one_generation_event(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -155,13 +206,45 @@ class ResponseClientTests(unittest.TestCase):
             first_state = json.loads(fixture.read_text(encoding="utf-8"))
             self.assertEqual(first_state["status"], "running")
             self.assertEqual(first_state["restart_count"], 1)
+            self.assertEqual(first_state["last_action_id"], "action-once")
             self.assertEqual(unrelated.read_text(encoding="utf-8"), '{"status":"do-not-touch"}\n')
 
-            # Server may return dispatching again after a transient response failure.
+            # Server may return the same action again after a transient response failure.
             # The durable local ledger must return the saved result without executing twice.
             self.assertEqual(client.poll_and_execute(), 0)
             second_state = json.loads(fixture.read_text(encoding="utf-8"))
             self.assertEqual(second_state["restart_count"], 1)
+
+    def test_crash_recovery_does_not_reapply_action_after_fixture_write(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            client = self.client(root)
+            fixture = client.initialize_demo_fixture(unhealthy=True)
+            action = {
+                "schema_version": "1.0",
+                "action_id": "action-crash-window",
+                "incident_id": "incident-test",
+                "target_agent_id": "agent-test",
+                "target_host_id": "host-test",
+                "action_type": "restart_quietward_demo_service",
+                "parameters": {},
+                "status": "executing",
+            }
+
+            # Simulate the process dying after the fixture write but before the
+            # terminal ledger/result was persisted to Response.
+            first_result = client._execute_action(action)
+            client._save_ledger(
+                {"action-crash-window": {"status": "executing", "result": {}, "error": None}}
+            )
+            client.pending_actions = [action]
+
+            self.assertEqual(client.poll_and_execute(), 0)
+            state = json.loads(fixture.read_text(encoding="utf-8"))
+            self.assertEqual(state["restart_count"], 1)
+            ledger = client._load_ledger()
+            self.assertEqual(ledger["action-crash-window"]["status"], "succeeded")
+            self.assertEqual(ledger["action-crash-window"]["result"], first_result)
 
 
 if __name__ == "__main__":
