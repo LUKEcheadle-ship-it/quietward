@@ -94,9 +94,9 @@ public_listener == false
 
 Outbound connection monitoring is disabled by default. Enable it only when you are ready to establish and review a real-host baseline.
 
-## Experimental QuietWard Response integration
+## Optional QuietWard Response integration
 
-The `feature/response-platform-integration` branch contains an **optional** integration with the separate QuietWard Response control-plane project. It is not part of the current public alpha release.
+Current source includes an **optional, disabled-by-default** integration with the separate QuietWard Response v1 control-plane project. QuietWard remains independently usable and keeps its observation-first behavior when the integration is disabled or Response is unavailable.
 
 When explicitly enabled, QuietWard can:
 
@@ -121,7 +121,7 @@ QUIETWARD_RESPONSE_KEY_ID=...
 QUIETWARD_RESPONSE_SECRET=...
 ```
 
-The v1 integration branch deliberately recognizes only one executable response action: `restart_quietward_demo_service`. Despite the name, it does **not** control a real operating-system service. It changes only the dedicated QuietWard-owned state file `quietward-response-demo.json`. It accepts no service name, command, path, process ID, or other arbitrary target.
+The v1 compatibility contract deliberately recognizes only one executable response action: `restart_quietward_demo_service`. Despite the name, it does **not** control a real operating-system service. It changes only the dedicated QuietWard-owned state file `quietward-response-demo.json`. It accepts no service name, command, path, process ID, or other arbitrary target.
 
 For a safe end-to-end demo after enrollment:
 
