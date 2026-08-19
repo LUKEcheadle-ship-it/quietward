@@ -4,7 +4,15 @@ from __future__ import annotations
 import argparse
 import json
 import socket
+import sys
 from pathlib import Path
+
+# This helper is intentionally runnable straight from a source checkout, even when
+# QuietWard has not been installed into the caller's active Python environment.
+ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
 
 from quietward.config import load_config
 from quietward.response_client import QuietWardResponseClient
