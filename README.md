@@ -80,9 +80,9 @@ Finding details include severity, score, allowlisted plain-language reason expla
 
 ## Safety boundary
 
-QuietWard does not quarantine or delete files, stop processes or services, change firewall rules, isolate a host, install packages during monitoring, upload telemetry, expose a public listener, execute arbitrary commands, or perform automatic remediation.
+QuietWard does not quarantine or delete files, stop arbitrary processes or services, change firewall rules, isolate a host, install packages during monitoring, upload telemetry by default, expose a public listener, execute arbitrary commands, or perform automatic remediation.
 
-Release invariants:
+Release invariants for the public alpha remain:
 
 ```text
 actions_executed == 0
@@ -93,6 +93,46 @@ public_listener == false
 ```
 
 Outbound connection monitoring is disabled by default. Enable it only when you are ready to establish and review a real-host baseline.
+
+## Optional QuietWard Response integration
+
+Current source includes an **optional, disabled-by-default** integration with the separate QuietWard Response v1 control-plane project. QuietWard remains independently usable and keeps its observation-first behavior when the integration is disabled or Response is unavailable.
+
+When explicitly enabled, QuietWard can:
+
+- send its own event observations to QuietWard Response using HMAC-SHA256 authenticated requests;
+- queue delivery locally if Response is temporarily unavailable;
+- treat an already-accepted duplicate event ID as successful retry completion, preventing a lost HTTP response from wedging the outbox;
+- poll outbound for actions that Response has already stored, approved, and policy-validated;
+- validate the action schema version, required/allowed fields, policy decision, lifecycle state, expiry, target agent, target host, action type, and parameters again on the endpoint;
+- refuse a new dispatch that has already expired;
+- refuse a server-only `executing` recovery unless matching local execution intent or the exact fixture action marker exists;
+- return a signed typed result;
+- persist execution intent and a terminal action ledger;
+- mark the dedicated demo fixture with the applied action ID/result so recovery cannot change the fixture twice.
+
+Enablement is environment-driven and off by default:
+
+```text
+QUIETWARD_RESPONSE_ENABLED=true
+QUIETWARD_RESPONSE_URL=http://127.0.0.1:8002
+QUIETWARD_RESPONSE_AGENT_ID=...
+QUIETWARD_RESPONSE_KEY_ID=...
+QUIETWARD_RESPONSE_SECRET=...
+```
+
+The v1 compatibility contract deliberately recognizes only one executable response action: `restart_quietward_demo_service`. Despite the name, it does **not** control a real operating-system service. It changes only the dedicated QuietWard-owned state file `quietward-response-demo.json`. It accepts no service name, command, path, process ID, or other arbitrary target.
+
+For a safe end-to-end demo after enrollment:
+
+```bash
+python scripts/quietward_response_demo.py init-unhealthy --host-id YOUR_HOST_ID
+python scripts/quietward_response_demo.py sync --host-id YOUR_HOST_ID
+```
+
+The first sync sends an authenticated synthetic health event for that dedicated fixture. After an analyst prepares and approves the allowlisted response in the QuietWard Response incident console, run `sync` again to poll, execute the demo-only state transition, and return the result.
+
+If Response is disabled or unreachable, QuietWard continues its local monitoring path. The main service catches optional integration failures rather than converting them into local service failure. A malformed, stale, unapproved, wrongly targeted, or otherwise unsupported polled action fails closed before the demo fixture changes. No shell, PowerShell, `cmd`, service manager, process kill, firewall, file deletion, quarantine, or host isolation capability is introduced by this bridge.
 
 ## Build and verify a release candidate
 
