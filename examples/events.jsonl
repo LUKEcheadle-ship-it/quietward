@@ -1,3 +1,0 @@
-{"event_id":"evt-001","observed_at":"2026-07-30T16:00:00Z","host_id":"demo-host","source":"file-integrity","kind":"executable_created","subject":"/tmp/update-helper","attributes":{"unsigned_executable":true,"baseline_deviation":0.8},"confidence":0.95}
-{"event_id":"evt-002","observed_at":"2026-07-30T16:00:05Z","host_id":"demo-host","source":"network-monitor","kind":"outbound_connection","subject":"/tmp/update-helper","attributes":{"external_destination":true,"baseline_deviation":0.9},"confidence":0.9}
-{"event_id":"evt-003","observed_at":"2026-07-30T16:00:08Z","host_id":"demo-host","source":"yara","kind":"yara_match","subject":"/tmp/update-helper","attributes":{"known_bad_hash":false},"confidence":0.98}

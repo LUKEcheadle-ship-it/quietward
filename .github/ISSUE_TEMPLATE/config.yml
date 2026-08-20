@@ -1,5 +1,0 @@
-blank_issues_enabled: false
-contact_links:
-  - name: Private security report
-    url: https://github.com/LUKEcheadle-ship-it/quietward/security/advisories/new
-    about: Report vulnerabilities, privacy leaks, bypasses, and exploit paths privately. Do not open a public issue.
