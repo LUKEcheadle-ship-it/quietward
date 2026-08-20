@@ -12,8 +12,6 @@ This project independently challenges security claims already made by the v1 thr
 - **Live probes:** six stateless HMAC/authentication probes plus optional nonce-replay and event-ID-conflict probes
 - **Target scope:** loopback HTTP/HTTPS only
 
-The complete source is published on this branch as `quietward-adversarial-validation-v0.1.0.zip`; verify it with `SHA256SUMS.txt` before extracting.
-
 ## Safety boundary
 
 The v0.1 harness is deliberately non-destructive:
@@ -31,13 +29,35 @@ The v0.1 harness is deliberately non-destructive:
 
 ## Attack matrix
 
-The initial 38-case matrix covers protocol/authentication, agent lifecycle, approval/policy, action-result forgery, malicious-Response attempts, corrupt endpoint state, audit integrity, concurrency, and data/deployment hardening.
+The initial 38-case matrix covers:
+
+1. protocol and authentication
+2. agent lifecycle and credential boundaries
+3. approval and policy enforcement
+4. result forgery and lifecycle substitution
+5. malicious-Response-to-QuietWard attempts
+6. corrupt endpoint response state
+7. audit integrity
+8. concurrency and unsupported runtime shapes
+9. data and deployment hardening
+
+Use `qw-adversary --list` to inspect every case.
 
 ## Implemented live probes
 
-The first live pack checks rejection of missing authentication headers, wrong key IDs, body tampering after signing, target/path-query tampering after signing, stale signed timestamps, and future signed timestamps.
+The first live pack checks that Response rejects:
 
-An optional stateful pack creates only synthetic test-owned events to prove nonce replay rejection and event UUID reuse with changed content rejection.
+- missing authentication headers
+- wrong key IDs
+- body tampering after signing
+- target/path-query tampering after signing
+- stale signed timestamps
+- future signed timestamps
+
+An optional stateful pack creates only synthetic test-owned events to prove:
+
+- nonce replay rejection
+- event UUID reuse with changed content rejection
 
 No enrollment or credential creation is automated. Supply a dedicated test agent through environment variables so the harness never prints or persists the secret itself.
 
@@ -75,8 +95,8 @@ PYTHONPATH=src pytest -q
 - **QuietWard** observes endpoint state and enforces the endpoint-side action allowlist.
 - **QuietWard Response** correlates incidents, manages approval/policy, coordinates actions, and records audit evidence.
 - **QuietWard Adversarial Validation** independently tests the claimed trust boundaries between them.
-- **RedLab** is reserved for a later, broader authorized lab-testing project and is intentionally not part of this project.
+- **RedLab** is reserved for a later, broader authorized lab-testing project and is intentionally not part of this repository.
 
 ## License
 
-MIT License; the source archive contains `LICENSE` and `SECURITY.md`.
+MIT License. See `LICENSE`.

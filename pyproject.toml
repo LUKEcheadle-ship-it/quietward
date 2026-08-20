@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=70"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "quietward-adversarial-validation"
+version = "0.1.0"
+description = "Non-destructive adversarial validation harness for QuietWard + QuietWard Response v1"
+requires-python = ">=3.12"
+dependencies = ["httpx>=0.28,<1"]
+
+[project.optional-dependencies]
+test = ["pytest>=8,<10"]
+
+[project.scripts]
+qw-adversary = "qw_adversary.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
