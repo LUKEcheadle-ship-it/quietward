@@ -29,9 +29,6 @@ BASE_WEIGHTS = {
     EventKind.COLLECTOR_HEALTH: 0.0,
 }
 
-# Marker weights are bounded and deterministic. The aliases below intentionally
-# include marker names already emitted by the Linux/Windows/container collectors so
-# stronger scoring is active on real telemetry rather than only synthetic tests.
 _MARKER_WEIGHTS: dict[str, float] = {
     "credential_dumping": 30.0,
     "credential_theft": 28.0,
@@ -39,6 +36,8 @@ _MARKER_WEIGHTS: dict[str, float] = {
     "reverse_shell": 32.0,
     "web_shell": 30.0,
     "process_injection": 30.0,
+    "document_spawned_interpreter": 30.0,
+    "server_spawned_suspicious_shell": 30.0,
     "download_execute": 24.0,
     "download_and_execute": 24.0,
     "download_execute_chain": 24.0,
@@ -74,15 +73,14 @@ _MARKER_WEIGHTS: dict[str, float] = {
     "unexpected_interpreter": 14.0,
 }
 
-# These markers describe behavior that is sufficiently specific that, when a
-# typed collector emits them, leaving the event below HIGH would under-prioritize
-# the evidence. The floor affects severity only; it never authorizes an action.
 _HIGH_CONFIDENCE_MARKERS = {
     "credential_dumping",
     "credential_theft",
     "reverse_shell",
     "web_shell",
     "process_injection",
+    "document_spawned_interpreter",
+    "server_spawned_suspicious_shell",
     "dangerous_container_config",
     "docker_socket_mount",
     "host_root_mount",
@@ -208,8 +206,6 @@ class DeterministicRiskScorer:
                 f"credential_spray_context={distinct_accounts}_accounts/"
                 f"{spray_attempts}_source_failures:+{spray_bonus:.1f}"
             )
-            # A large, multi-account burst is a high-confidence credential-spray
-            # pattern even when the individual auth-failure event has a low base.
             if spray_attempts >= 32 and distinct_accounts >= 8 and event.confidence >= 0.8:
                 before_floor = score
                 score = max(score, 65.0)
