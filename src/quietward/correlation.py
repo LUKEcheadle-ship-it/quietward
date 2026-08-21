@@ -39,6 +39,20 @@ _HIGH_SIGNAL_KINDS = {
     EventKind.PRIVILEGE_ESCALATION,
     EventKind.PERSISTENCE_CHANGE,
 }
+_HIGH_SIGNAL_MARKERS = {
+    "reverse_shell",
+    "web_shell",
+    "credential_dumping",
+    "credential_theft",
+    "process_injection",
+    "document_spawned_interpreter",
+    "web_server_spawned_suspicious_shell",
+    "ransomware_recovery_inhibition",
+    "event_log_clearing",
+    "docker_socket_mount",
+    "host_root_mount",
+    "dangerous_container_config",
+}
 
 
 def _normalized_process_name(value: object) -> str:
@@ -48,14 +62,38 @@ def _normalized_process_name(value: object) -> str:
     return PurePath(text).name.casefold()[:128]
 
 
+def _event_markers(event: SecurityEvent) -> set[str]:
+    attrs = event.attributes or {}
+    raw = (
+        attrs.get("suspicious_markers")
+        or attrs.get("risk_markers")
+        or attrs.get("security_markers")
+        or []
+    )
+    if isinstance(raw, str):
+        values = [raw]
+    elif isinstance(raw, (list, tuple, set)):
+        values = raw
+    else:
+        values = []
+    return {
+        str(item).strip().casefold().replace("-", "_").replace(" ", "_")
+        for item in values
+        if str(item).strip()
+    }
+
+
+def _event_is_high_signal(event: SecurityEvent) -> bool:
+    return event.kind in _HIGH_SIGNAL_KINDS or bool(_event_markers(event) & _HIGH_SIGNAL_MARKERS)
+
+
 def _process_network_matches(events: list[SecurityEvent]) -> tuple[str, ...]:
     suspicious_processes: set[str] = set()
     network_processes: set[str] = set()
     for event in events:
         attrs = event.attributes or {}
         if event.kind is EventKind.PROCESS_START:
-            markers = attrs.get("suspicious_markers") or attrs.get("risk_markers") or []
-            if not markers:
+            if not _event_markers(event):
                 continue
             for candidate in (
                 attrs.get("command_name"),
@@ -164,6 +202,7 @@ class IncidentCorrelator:
         best_events: list[SecurityEvent] = []
         best_score = -1.0
         best_process_network_matches: tuple[str, ...] = ()
+        best_high_signal_markers: tuple[str, ...] = ()
         left = 0
         for right, event in enumerate(candidates):
             while (
@@ -174,13 +213,18 @@ class IncidentCorrelator:
             window = candidates[left : right + 1]
             phases = {_PHASE_BY_KIND[item.kind] for item in window}
             max_score = max(by_id[item.event_id].score for item in window)
-            has_high_signal = any(item.kind in _HIGH_SIGNAL_KINDS for item in window)
+            has_high_signal = any(_event_is_high_signal(item) for item in window)
+            high_signal_markers = tuple(
+                sorted(
+                    {
+                        marker
+                        for item in window
+                        for marker in (_event_markers(item) & _HIGH_SIGNAL_MARKERS)
+                    }
+                )
+            )
             process_network_matches = _process_network_matches(window)
 
-            # Three distinct attack phases are enough when at least one event is
-            # materially suspicious. Two phases require either a high-signal typed
-            # event or exact suspicious-process/network corroboration. The latter
-            # uses only process names already present in read-only telemetry.
             qualifies = (
                 len(phases) >= 3 and max_score >= 25.0
             ) or (
@@ -208,6 +252,7 @@ class IncidentCorrelator:
                 best_score = chain_score
                 best_events = list(window)
                 best_process_network_matches = process_network_matches
+                best_high_signal_markers = high_signal_markers
 
         if not best_events or best_score < self.minimum_finding_score:
             return None
@@ -228,6 +273,10 @@ class IncidentCorrelator:
             "attack_chain_phases=" + ",".join(phases),
             f"attack_chain_subject_count={len(subjects)}",
         ]
+        if best_high_signal_markers:
+            reasons.append(
+                "attack_chain_high_signal_markers=" + ",".join(best_high_signal_markers[:8])
+            )
         if best_process_network_matches:
             reasons.append(
                 "process_network_corroboration=" + ",".join(best_process_network_matches)
