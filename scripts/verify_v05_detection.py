@@ -85,6 +85,9 @@ def _verify_detection_hardening_source_contract() -> None:
     debian = (ROOT / "src" / "quietward" / "collectors" / "debian.py").read_text(
         encoding="utf-8"
     )
+    parsers = (ROOT / "src" / "quietward" / "collectors" / "parsers.py").read_text(
+        encoding="utf-8"
+    )
     windows = (
         ROOT / "src" / "quietward" / "collectors" / "windows_parsers.py"
     ).read_text(encoding="utf-8")
@@ -102,6 +105,7 @@ def _verify_detection_hardening_source_contract() -> None:
             "credential_spray_high_priority_floor=65.0",
             "high_confidence_behavior_floor=65.0",
             '"document_spawned_interpreter"',
+            '"web_server_spawned_suspicious_shell"',
             '"reverse_shell"',
             '"credential_dumping"',
         ),
@@ -110,6 +114,12 @@ def _verify_detection_hardening_source_contract() -> None:
             '"source_failed_count"',
             '"raw_source_address_persisted": False',
             '"raw_username_persisted": False',
+        ),
+        "collectors/parsers.py": (
+            '"web_server_spawned_suspicious_shell"',
+            "_LINUX_WEB_PARENT_NAMES",
+            "_PARENT_CHILD_SUSPICIOUS_MARKERS",
+            "_linux_parent_child_markers",
         ),
         "collectors/windows_parsers.py": (
             '"reverse_shell"',
@@ -123,6 +133,7 @@ def _verify_detection_hardening_source_contract() -> None:
         "correlation.py": correlation,
         "scoring.py": scoring,
         "collectors/debian.py": debian,
+        "collectors/parsers.py": parsers,
         "collectors/windows_parsers.py": windows,
     }
     missing: list[str] = []
@@ -153,6 +164,7 @@ def main() -> int:
     print("Windows reverse-shell/credential-dumping markers=PASS")
     print("Windows document-to-interpreter parent-child detection=PASS")
     print("Linux reverse-shell/downloader/encoded-shell markers=PASS")
+    print("Linux web-server-to-suspicious-shell ancestry=PASS")
     print("observation-only contract=PASS")
     print("Response repository/code separation=PASS")
     print("public-release audit=PASS")
