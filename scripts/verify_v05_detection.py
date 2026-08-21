@@ -94,6 +94,9 @@ def _verify_detection_hardening_source_contract() -> None:
             "cross_subject_host_attack_chain=true",
             "timedelta(minutes=15)",
             "qwf-chain-",
+            "process_network_corroboration=",
+            "process_network_corroboration_bonus=+12.0",
+            "_process_network_matches",
         ),
         "scoring.py": (
             "credential_spray_high_priority_floor=65.0",
@@ -144,6 +147,7 @@ def main() -> int:
     print(f"version={version}")
     print("full pytest suite=PASS")
     print("cross-subject attack-chain correlation=PASS")
+    print("process-network corroboration=PASS")
     print("credential-spray source/account aggregation=PASS")
     print("high-confidence behavior priority floors=PASS")
     print("Windows reverse-shell/credential-dumping markers=PASS")
