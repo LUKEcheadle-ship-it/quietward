@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "quietward"
-version = "0.4.0a2"
+version = "0.5.0a1"
 description = "Offline-first, observation-only cybersecurity monitoring and threat triage"
 readme = "README.md"
 requires-python = ">=3.11"
