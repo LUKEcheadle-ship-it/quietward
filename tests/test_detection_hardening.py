@@ -44,7 +44,7 @@ class DetectionHardeningTests(unittest.TestCase):
         chains = [item for item in findings if item.finding_id.startswith("qwf-chain-")]
         self.assertEqual(len(chains), 1)
         chain = chains[0]
-        self.assertGreaterEqual(chain.severity, Severity.HIGH)
+        self.assertIn(chain.severity, {Severity.HIGH, Severity.CRITICAL})
         self.assertEqual(set(chain.evidence_event_ids), {"e1", "e2", "e3", "e4"})
         self.assertIn("cross_subject_host_attack_chain=true", chain.reasons)
 
@@ -85,7 +85,7 @@ class DetectionHardeningTests(unittest.TestCase):
             },
         )
         assessment = DeterministicRiskScorer().score(sample)
-        self.assertGreaterEqual(assessment.severity, Severity.HIGH)
+        self.assertIn(assessment.severity, {Severity.HIGH, Severity.CRITICAL})
         self.assertTrue(any("credential_spray_context=" in reason for reason in assessment.reasons))
 
 
