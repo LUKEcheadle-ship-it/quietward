@@ -30,8 +30,8 @@ BASE_WEIGHTS = {
 }
 
 # Marker weights are bounded and deterministic. The aliases below intentionally
-# include marker names already emitted by the Linux/Windows collectors so stronger
-# scoring is active on real telemetry rather than only synthetic tests.
+# include marker names already emitted by the Linux/Windows/container collectors so
+# stronger scoring is active on real telemetry rather than only synthetic tests.
 _MARKER_WEIGHTS: dict[str, float] = {
     "credential_dumping": 30.0,
     "credential_theft": 28.0,
@@ -61,6 +61,15 @@ _MARKER_WEIGHTS: dict[str, float] = {
     "dangerous_container_config": 28.0,
     "privileged_container": 24.0,
     "docker_socket_mount": 28.0,
+    "host_root_mount": 30.0,
+    "sensitive_host_mount": 20.0,
+    "sensitive_capability": 20.0,
+    "host_pid": 20.0,
+    "host_network": 14.0,
+    "host_ipc": 14.0,
+    "no_new_privileges_missing": 6.0,
+    "restart_loop": 8.0,
+    "unhealthy_container": 6.0,
     "suspicious_child_process": 14.0,
     "unexpected_interpreter": 14.0,
 }
