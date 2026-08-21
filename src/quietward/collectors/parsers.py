@@ -13,6 +13,20 @@ from .privacy import stable_hash
 _VOLATILE_PREFIXES = ("/tmp/", "/var/tmp/", "/dev/shm/")
 _MINER_NAMES = {"xmrig", "minerd", "cpuminer", "ethminer"}
 _RELAY_NAMES = {"nc", "ncat", "netcat", "socat"}
+_LINUX_SHELL_NAMES = {"bash", "sh", "dash", "zsh", "ksh"}
+_LINUX_WEB_PARENT_NAMES = {
+    "apache2",
+    "httpd",
+    "nginx",
+    "lighttpd",
+    "gunicorn",
+    "uwsgi",
+}
+_PARENT_CHILD_SUSPICIOUS_MARKERS = {
+    "reverse_shell",
+    "download_execute_chain",
+    "encoded_shell_chain",
+}
 _AUTH_PATTERNS = (
     re.compile(r"failed password", re.I),
     re.compile(r"authentication failure", re.I),
@@ -47,7 +61,7 @@ def _markers(command_name: str, executable: str, args: str) -> tuple[str, ...]:
         or "exec:" in lowered
     ):
         markers.add("reverse_shell")
-    if name in {"bash", "sh", "dash", "zsh", "ksh"} and "/dev/tcp/" in lowered:
+    if name in _LINUX_SHELL_NAMES and "/dev/tcp/" in lowered:
         markers.add("reverse_shell")
     if ("curl " in lowered or "wget " in lowered) and re.search(r"\|\s*(?:ba)?sh\b", lowered):
         markers.add("download_execute_chain")
@@ -56,8 +70,39 @@ def _markers(command_name: str, executable: str, args: str) -> tuple[str, ...]:
     return tuple(sorted(markers))
 
 
+def _linux_parent_child_markers(records: list[ProcessRecord]) -> tuple[ProcessRecord, ...]:
+    by_pid = {record.pid: record for record in records}
+    enriched: list[ProcessRecord] = []
+    for record in records:
+        markers = set(record.suspicious_markers)
+        parent = by_pid.get(record.ppid)
+        if parent is not None:
+            parent_name = parent.command_name.lower()
+            child_name = record.command_name.lower()
+            web_parent = parent_name in _LINUX_WEB_PARENT_NAMES or parent_name.startswith("php-fpm")
+            if (
+                web_parent
+                and child_name in _LINUX_SHELL_NAMES
+                and markers & _PARENT_CHILD_SUSPICIOUS_MARKERS
+            ):
+                markers.add("web_server_spawned_suspicious_shell")
+        enriched.append(
+            ProcessRecord(
+                record.pid,
+                record.ppid,
+                record.user,
+                record.command_name,
+                record.executable,
+                record.args_hash,
+                tuple(sorted(markers)),
+                record.privileged_context,
+            )
+        )
+    return tuple(enriched)
+
+
 def parse_ps_output(text: str) -> tuple[ProcessRecord, ...]:
-    records = []
+    records: list[ProcessRecord] = []
     for line in text.splitlines():
         parts = line.strip().split(None, 4)
         if len(parts) < 4:
@@ -71,8 +116,18 @@ def parse_ps_output(text: str) -> tuple[ProcessRecord, ...]:
             continue
         first = args.split(None, 1)[0] if args.strip() else command_name
         executable = first if first.startswith("/") else command_name
-        records.append(ProcessRecord(pid, ppid, user, command_name, executable, _args_hash(args), _markers(command_name, executable, args)))
-    return tuple(records)
+        records.append(
+            ProcessRecord(
+                pid,
+                ppid,
+                user,
+                command_name,
+                executable,
+                _args_hash(args),
+                _markers(command_name, executable, args),
+            )
+        )
+    return _linux_parent_child_markers(records)
 
 
 def _split_host_port(value: str) -> tuple[str, int] | None:
