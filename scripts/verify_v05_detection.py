@@ -77,10 +77,65 @@ def _verify_observation_only_source_contract() -> None:
         raise RuntimeError(f"observation-only README contract missing: {missing}")
 
 
+def _verify_detection_hardening_source_contract() -> None:
+    correlation = (ROOT / "src" / "quietward" / "correlation.py").read_text(
+        encoding="utf-8"
+    )
+    scoring = (ROOT / "src" / "quietward" / "scoring.py").read_text(encoding="utf-8")
+    debian = (ROOT / "src" / "quietward" / "collectors" / "debian.py").read_text(
+        encoding="utf-8"
+    )
+    windows = (
+        ROOT / "src" / "quietward" / "collectors" / "windows_parsers.py"
+    ).read_text(encoding="utf-8")
+
+    required = {
+        "correlation.py": (
+            "cross_subject_host_attack_chain=true",
+            "timedelta(minutes=15)",
+            "qwf-chain-",
+        ),
+        "scoring.py": (
+            "credential_spray_high_priority_floor=65.0",
+            "high_confidence_behavior_floor=65.0",
+            '"document_spawned_interpreter"',
+            '"reverse_shell"',
+            '"credential_dumping"',
+        ),
+        "collectors/debian.py": (
+            '"credential_spray"',
+            '"source_failed_count"',
+            '"raw_source_address_persisted": False',
+            '"raw_username_persisted": False',
+        ),
+        "collectors/windows_parsers.py": (
+            '"reverse_shell"',
+            '"credential_dumping"',
+            '"document_spawned_interpreter"',
+            "_DOCUMENT_PARENTS",
+            "_DOCUMENT_CHILD_EXECUTORS",
+        ),
+    }
+    texts = {
+        "correlation.py": correlation,
+        "scoring.py": scoring,
+        "collectors/debian.py": debian,
+        "collectors/windows_parsers.py": windows,
+    }
+    missing: list[str] = []
+    for label, fragments in required.items():
+        for fragment in fragments:
+            if fragment not in texts[label]:
+                missing.append(f"{label}: {fragment}")
+    if missing:
+        raise RuntimeError("v0.5 detection hardening source contract missing:\n" + "\n".join(missing))
+
+
 def main() -> int:
     version = _version()
     _verify_repository_separation()
     _verify_observation_only_source_contract()
+    _verify_detection_hardening_source_contract()
     _run([sys.executable, "-m", "compileall", "-q", "src", "tests"])
     _run([sys.executable, "-m", "pytest", "-q"])
     _run([sys.executable, "scripts/public_release_audit.py"])
@@ -90,7 +145,9 @@ def main() -> int:
     print("full pytest suite=PASS")
     print("cross-subject attack-chain correlation=PASS")
     print("credential-spray source/account aggregation=PASS")
+    print("high-confidence behavior priority floors=PASS")
     print("Windows reverse-shell/credential-dumping markers=PASS")
+    print("Windows document-to-interpreter parent-child detection=PASS")
     print("Linux reverse-shell/downloader/encoded-shell markers=PASS")
     print("observation-only contract=PASS")
     print("Response repository/code separation=PASS")
