@@ -138,17 +138,17 @@ def _command_markers(executable: str, command_line: str) -> tuple[str, ...]:
     ):
         markers.append("credential_dumping")
 
-    # Recovery inhibition is a high-signal ransomware/impact behavior. Match only
-    # explicit destructive forms rather than any use of these administrative tools.
+    # Explicit recovery-inhibition forms are high-signal ransomware/impact behavior.
+    # Allow the normal `.exe` spelling while avoiding read/list operations.
     if any(
-        token in combined
-        for token in (
-            "vssadmin delete shadows",
-            "wmic shadowcopy delete",
-            "wbadmin delete catalog",
+        re.search(pattern, combined)
+        for pattern in (
+            r"\bvssadmin(?:\.exe)?\s+delete\s+shadows\b",
+            r"\bwmic(?:\.exe)?\s+shadowcopy\s+delete\b",
+            r"\bwbadmin(?:\.exe)?\s+delete\s+catalog\b",
         )
     ) or (
-        "bcdedit" in combined
+        re.search(r"\bbcdedit(?:\.exe)?\b", combined)
         and "recoveryenabled" in combined
         and re.search(r"(?:\s|=)(?:no|off)(?:\s|$)", combined)
     ):
