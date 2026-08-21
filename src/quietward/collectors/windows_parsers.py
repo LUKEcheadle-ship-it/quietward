@@ -137,6 +137,39 @@ def _command_markers(executable: str, command_line: str) -> tuple[str, ...]:
         and "lsass" in combined
     ):
         markers.append("credential_dumping")
+
+    # Recovery inhibition is a high-signal ransomware/impact behavior. Match only
+    # explicit destructive forms rather than any use of these administrative tools.
+    if any(
+        token in combined
+        for token in (
+            "vssadmin delete shadows",
+            "wmic shadowcopy delete",
+            "wbadmin delete catalog",
+        )
+    ) or (
+        "bcdedit" in combined
+        and "recoveryenabled" in combined
+        and re.search(r"(?:\s|=)(?:no|off)(?:\s|$)", combined)
+    ):
+        markers.append("ransomware_recovery_inhibition")
+
+    # Explicit event-log clearing is security-relevant defense evasion. Reading,
+    # exporting, or querying logs does not trigger this marker.
+    if re.search(r"\bwevtutil(?:\.exe)?\s+cl(?:ear-log)?\s+", combined) or any(
+        token in combined for token in ("clear-eventlog ", "remove-eventlog ")
+    ):
+        markers.append("event_log_clearing")
+
+    # Defender preference tampering is useful context but can also be legitimate
+    # administration, so it receives a bounded score rather than a HIGH floor.
+    if (
+        "set-mppreference" in combined
+        and "disablerealtimemonitoring" in combined
+        and ("$true" in combined or re.search(r"disablerealtimemonitoring\s+1(?:\s|$)", combined))
+    ):
+        markers.append("defender_tamper_command")
+
     return tuple(sorted(set(markers)))
 
 
