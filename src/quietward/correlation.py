@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
+from pathlib import PurePath
 
 from .contracts import EventAssessment, EventKind, Finding, SecurityEvent
 from .scoring import severity_for_score
@@ -38,6 +39,37 @@ _HIGH_SIGNAL_KINDS = {
     EventKind.PRIVILEGE_ESCALATION,
     EventKind.PERSISTENCE_CHANGE,
 }
+
+
+def _normalized_process_name(value: object) -> str:
+    text = str(value or "").strip().replace("\\", "/")
+    if not text:
+        return ""
+    return PurePath(text).name.casefold()[:128]
+
+
+def _process_network_matches(events: list[SecurityEvent]) -> tuple[str, ...]:
+    suspicious_processes: set[str] = set()
+    network_processes: set[str] = set()
+    for event in events:
+        attrs = event.attributes or {}
+        if event.kind is EventKind.PROCESS_START:
+            markers = attrs.get("suspicious_markers") or attrs.get("risk_markers") or []
+            if not markers:
+                continue
+            for candidate in (
+                attrs.get("command_name"),
+                attrs.get("executable"),
+                event.subject,
+            ):
+                name = _normalized_process_name(candidate)
+                if name:
+                    suspicious_processes.add(name)
+        elif event.kind in {EventKind.OUTBOUND_CONNECTION, EventKind.NEW_LISTENING_PORT}:
+            name = _normalized_process_name(attrs.get("process_name"))
+            if name:
+                network_processes.add(name)
+    return tuple(sorted(suspicious_processes & network_processes))
 
 
 class IncidentCorrelator:
@@ -131,6 +163,7 @@ class IncidentCorrelator:
 
         best_events: list[SecurityEvent] = []
         best_score = -1.0
+        best_process_network_matches: tuple[str, ...] = ()
         left = 0
         for right, event in enumerate(candidates):
             while (
@@ -142,15 +175,18 @@ class IncidentCorrelator:
             phases = {_PHASE_BY_KIND[item.kind] for item in window}
             max_score = max(by_id[item.event_id].score for item in window)
             has_high_signal = any(item.kind in _HIGH_SIGNAL_KINDS for item in window)
+            process_network_matches = _process_network_matches(window)
 
             # Three distinct attack phases are enough when at least one event is
-            # materially suspicious. Two phases require a high-signal event and a
-            # high assessment score. This keeps ordinary same-host background
-            # activity from becoming a synthetic incident merely due to diversity.
+            # materially suspicious. Two phases require either a high-signal typed
+            # event or exact suspicious-process/network corroboration. The latter
+            # uses only process names already present in read-only telemetry.
             qualifies = (
                 len(phases) >= 3 and max_score >= 25.0
             ) or (
                 len(phases) >= 2 and has_high_signal and max_score >= 65.0
+            ) or (
+                len(phases) >= 2 and bool(process_network_matches) and max_score >= 50.0
             )
             if not qualifies:
                 continue
@@ -161,12 +197,17 @@ class IncidentCorrelator:
 
             phase_bonus = min(24.0, max(0, len(phases) - 1) * 7.0)
             evidence_bonus = min(10.0, max(0, len(window) - 2) * 2.5)
-            chain_score = min(100.0, max_score + phase_bonus + evidence_bonus)
+            corroboration_bonus = 12.0 if process_network_matches else 0.0
+            chain_score = min(
+                100.0,
+                max_score + phase_bonus + evidence_bonus + corroboration_bonus,
+            )
             if chain_score > best_score or (
                 chain_score == best_score and len(window) > len(best_events)
             ):
                 best_score = chain_score
                 best_events = list(window)
+                best_process_network_matches = process_network_matches
 
         if not best_events or best_score < self.minimum_finding_score:
             return None
@@ -187,6 +228,11 @@ class IncidentCorrelator:
             "attack_chain_phases=" + ",".join(phases),
             f"attack_chain_subject_count={len(subjects)}",
         ]
+        if best_process_network_matches:
+            reasons.append(
+                "process_network_corroboration=" + ",".join(best_process_network_matches)
+            )
+            reasons.append("process_network_corroboration_bonus=+12.0")
         return Finding(
             finding_id=finding_id,
             created_at=datetime.now(timezone.utc),
