@@ -106,6 +106,9 @@ def _verify_detection_hardening_source_contract() -> None:
             "high_confidence_behavior_floor=65.0",
             '"document_spawned_interpreter"',
             '"web_server_spawned_suspicious_shell"',
+            '"ransomware_recovery_inhibition"',
+            '"event_log_clearing"',
+            '"defender_tamper_command"',
             '"reverse_shell"',
             '"credential_dumping"',
         ),
@@ -125,6 +128,11 @@ def _verify_detection_hardening_source_contract() -> None:
             '"reverse_shell"',
             '"credential_dumping"',
             '"document_spawned_interpreter"',
+            '"ransomware_recovery_inhibition"',
+            '"event_log_clearing"',
+            '"defender_tamper_command"',
+            "vssadmin delete shadows",
+            "wevtutil",
             "_DOCUMENT_PARENTS",
             "_DOCUMENT_CHILD_EXECUTORS",
         ),
@@ -163,6 +171,7 @@ def main() -> int:
     print("high-confidence behavior priority floors=PASS")
     print("Windows reverse-shell/credential-dumping markers=PASS")
     print("Windows document-to-interpreter parent-child detection=PASS")
+    print("Windows recovery-inhibition/log-clearing detection=PASS")
     print("Linux reverse-shell/downloader/encoded-shell markers=PASS")
     print("Linux web-server-to-suspicious-shell ancestry=PASS")
     print("observation-only contract=PASS")
