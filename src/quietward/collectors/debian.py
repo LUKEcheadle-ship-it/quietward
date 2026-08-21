@@ -185,15 +185,64 @@ class DebianReadOnlyCollector:
         return False
 
     def _auth_events(self, rows: Sequence[dict[str, object]], fallback_time: datetime) -> list[SecurityEvent]:
+        if self.privacy_identity is None:
+            return []
+
         grouped: dict[tuple[str, str], list[dict[str, object]]] = defaultdict(list)
+        source_users: dict[str, set[str]] = defaultdict(set)
+        source_failures: dict[str, int] = defaultdict(int)
         for row in rows:
-            grouped[(str(row["source_address_hash"]), str(row["user"]))].append(row)
+            address_hash = str(row["source_address_hash"])
+            user_identity_hash = self.privacy_identity.identify(str(row["user"]))
+            grouped[(address_hash, user_identity_hash)].append(row)
+            source_users[address_hash].add(user_identity_hash)
+            source_failures[address_hash] += 1
+
         events: list[SecurityEvent] = []
-        for (address_hash, user), group in sorted(grouped.items()):
-            latest = max((item.get("observed_at") for item in group if isinstance(item.get("observed_at"), datetime)), default=fallback_time)
-            if self.privacy_identity is None:
-                continue
-            user_identity_hash = self.privacy_identity.identify(user)
-            digest = hashlib.sha256(f"{self.host_id}|auth|{address_hash}|{user_identity_hash}|{latest.isoformat()}|{len(group)}".encode()).hexdigest()[:20]
-            events.append(SecurityEvent("fse-" + digest, latest, self.host_id, "journald_ssh_read_only", EventKind.AUTH_FAILURE, f"auth:{address_hash}:user-{user_identity_hash}", {"source_address_hash": address_hash, "user_identity_hash": user_identity_hash, "failed_count": len(group), "raw_source_address_persisted": False, "raw_username_persisted": False, "raw_log_message_persisted": False}))
+        for (address_hash, user_identity_hash), group in sorted(grouped.items()):
+            latest = max(
+                (
+                    item.get("observed_at")
+                    for item in group
+                    if isinstance(item.get("observed_at"), datetime)
+                ),
+                default=fallback_time,
+            )
+            total_from_source = source_failures[address_hash]
+            distinct_accounts = len(source_users[address_hash])
+            spray_candidate = total_from_source >= 10 and distinct_accounts >= 5
+            digest = hashlib.sha256(
+                f"{self.host_id}|auth|{address_hash}|{user_identity_hash}|{latest.isoformat()}|{len(group)}".encode()
+            ).hexdigest()[:20]
+            events.append(
+                SecurityEvent(
+                    "fse-" + digest,
+                    latest,
+                    self.host_id,
+                    "journald_ssh_read_only",
+                    EventKind.AUTH_FAILURE,
+                    f"auth:{address_hash}:user-{user_identity_hash}",
+                    {
+                        "source_address_hash": address_hash,
+                        "user_identity_hash": user_identity_hash,
+                        "failed_count": len(group),
+                        "source_failed_count": total_from_source,
+                        "distinct_accounts": distinct_accounts,
+                        "suspicious_markers": ["credential_spray"]
+                        if spray_candidate
+                        else [],
+                        "credential_spray_candidate": spray_candidate,
+                        "raw_source_address_persisted": False,
+                        "raw_username_persisted": False,
+                        "raw_log_message_persisted": False,
+                    },
+                    confidence=(
+                        0.98
+                        if spray_candidate
+                        else 0.95
+                        if len(group) >= 5
+                        else 0.8
+                    ),
+                )
+            )
         return events
