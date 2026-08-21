@@ -42,6 +42,13 @@ def _markers(command_name: str, executable: str, args: str) -> tuple[str, ...]:
         markers.add("cryptominer_indicator")
     if name in _RELAY_NAMES and re.search(r"(?:^|\s)-[^\s]*l", lowered):
         markers.add("network_listener_tool")
+    if name in _RELAY_NAMES and (
+        re.search(r"(?:^|\s)-[^\s]*e(?:\s|$)", lowered)
+        or "exec:" in lowered
+    ):
+        markers.add("reverse_shell")
+    if name in {"bash", "sh", "dash", "zsh", "ksh"} and "/dev/tcp/" in lowered:
+        markers.add("reverse_shell")
     if ("curl " in lowered or "wget " in lowered) and re.search(r"\|\s*(?:ba)?sh\b", lowered):
         markers.add("download_execute_chain")
     if "base64 -d" in lowered and re.search(r"\|\s*(?:ba)?sh\b", lowered):
