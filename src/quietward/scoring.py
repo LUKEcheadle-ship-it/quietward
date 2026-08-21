@@ -74,6 +74,20 @@ _MARKER_WEIGHTS: dict[str, float] = {
     "unexpected_interpreter": 14.0,
 }
 
+# These markers describe behavior that is sufficiently specific that, when a
+# typed collector emits them, leaving the event below HIGH would under-prioritize
+# the evidence. The floor affects severity only; it never authorizes an action.
+_HIGH_CONFIDENCE_MARKERS = {
+    "credential_dumping",
+    "credential_theft",
+    "reverse_shell",
+    "web_shell",
+    "process_injection",
+    "dangerous_container_config",
+    "docker_socket_mount",
+    "host_root_mount",
+}
+
 
 def severity_for_score(score: float) -> Severity:
     if score >= 85:
@@ -156,6 +170,11 @@ class DeterministicRiskScorer:
             reasons.append(f"suspicious_markers=+{marker_bonus:.1f}")
             if high_signal:
                 reasons.append("high_signal_markers=" + ",".join(high_signal[:8]))
+            if set(markers) & _HIGH_CONFIDENCE_MARKERS and event.confidence >= 0.8:
+                before_floor = score
+                score = max(score, 65.0)
+                if score > before_floor:
+                    reasons.append("high_confidence_behavior_floor=65.0")
 
         failed = _integer_attribute(attrs, "failed_count", "failure_count", "attempt_count")
         if failed > 1:
@@ -189,6 +208,13 @@ class DeterministicRiskScorer:
                 f"credential_spray_context={distinct_accounts}_accounts/"
                 f"{spray_attempts}_source_failures:+{spray_bonus:.1f}"
             )
+            # A large, multi-account burst is a high-confidence credential-spray
+            # pattern even when the individual auth-failure event has a low base.
+            if spray_attempts >= 32 and distinct_accounts >= 8 and event.confidence >= 0.8:
+                before_floor = score
+                score = max(score, 65.0)
+                if score > before_floor:
+                    reasons.append("credential_spray_high_priority_floor=65.0")
 
         cvss = float(attrs.get("cvss") or 0)
         if cvss > 0:
