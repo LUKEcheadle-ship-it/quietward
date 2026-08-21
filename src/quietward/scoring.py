@@ -29,23 +29,35 @@ BASE_WEIGHTS = {
     EventKind.COLLECTOR_HEALTH: 0.0,
 }
 
-# Marker weights are deliberately bounded and deterministic. Unknown markers retain
-# a small generic contribution so existing collectors stay compatible, while
-# well-known multi-stage behaviors receive stronger priority.
+# Marker weights are bounded and deterministic. The aliases below intentionally
+# include marker names already emitted by the Linux/Windows collectors so stronger
+# scoring is active on real telemetry rather than only synthetic tests.
 _MARKER_WEIGHTS: dict[str, float] = {
     "credential_dumping": 30.0,
     "credential_theft": 28.0,
+    "credential_spray": 22.0,
     "reverse_shell": 32.0,
     "web_shell": 30.0,
     "process_injection": 30.0,
     "download_execute": 24.0,
     "download_and_execute": 24.0,
+    "download_execute_chain": 24.0,
+    "network_payload_retrieval": 20.0,
     "encoded_command": 18.0,
     "encoded_shell": 20.0,
+    "encoded_shell_chain": 20.0,
     "living_off_the_land": 16.0,
+    "living_off_the_land_pattern": 18.0,
     "lolbin": 16.0,
     "cryptominer": 22.0,
     "crypto_miner": 22.0,
+    "cryptominer_indicator": 22.0,
+    "network_listener_tool": 12.0,
+    "volatile_directory_executable": 16.0,
+    "user_writable_executable": 14.0,
+    "user_writable_target": 14.0,
+    "privileged_service": 18.0,
+    "network_target": 10.0,
     "dangerous_container_config": 28.0,
     "privileged_container": 24.0,
     "docker_socket_mount": 28.0,
@@ -150,11 +162,23 @@ class DeterministicRiskScorer:
             "target_account_count",
             "target_count",
         )
-        if event.kind is EventKind.AUTH_FAILURE and failed >= 10 and distinct_accounts >= 5:
+        source_failures = _integer_attribute(
+            attrs,
+            "source_failed_count",
+            "source_failure_count",
+            "source_attempt_count",
+        )
+        spray_attempts = max(failed, source_failures)
+        if (
+            event.kind is EventKind.AUTH_FAILURE
+            and spray_attempts >= 10
+            and distinct_accounts >= 5
+        ):
             spray_bonus = min(22.0, 8.0 + 2.0 * log2(distinct_accounts))
             score += spray_bonus
             reasons.append(
-                f"credential_spray_context={distinct_accounts}_accounts:+{spray_bonus:.1f}"
+                f"credential_spray_context={distinct_accounts}_accounts/"
+                f"{spray_attempts}_source_failures:+{spray_bonus:.1f}"
             )
 
         cvss = float(attrs.get("cvss") or 0)
