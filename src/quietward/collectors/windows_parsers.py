@@ -10,6 +10,7 @@ from typing import Any
 from ..contracts import EventKind, SecurityEvent
 from ..privacy_identity import PrivacyIdentity
 from .models import ConnectionRecord, DefenderStatus, PersistenceRecord, ProcessRecord, SocketRecord
+from .privacy import stable_hash
 
 
 def parse_windows_defender(text: str) -> DefenderStatus | None:
@@ -17,18 +18,21 @@ def parse_windows_defender(text: str) -> DefenderStatus | None:
     if not rows:
         return None
     row = rows[0]
+
     def optional_bool(name: str) -> bool | None:
         return bool(row[name]) if row.get(name) is not None else None
+
     return DefenderStatus(
         antivirus_enabled=optional_bool("AntivirusEnabled"),
         real_time_protection_enabled=optional_bool("RealTimeProtectionEnabled"),
         signature_version=_string(row.get("AntivirusSignatureVersion")) or None,
-        signature_age_days=_integer(row.get("AntivirusSignatureAge"), -1) if row.get("AntivirusSignatureAge") is not None else None,
+        signature_age_days=_integer(row.get("AntivirusSignatureAge"), -1)
+        if row.get("AntivirusSignatureAge") is not None
+        else None,
         last_quick_scan=_string(row.get("QuickScanEndTime")) or None,
         active_threat_count=_integer(row.get("ActiveThreatCount"), 0),
         remediation_required=optional_bool("RemediationRequired"),
     )
-from .privacy import stable_hash
 
 
 def _records(text: str) -> list[dict[str, Any]]:
@@ -59,14 +63,58 @@ def _string(value: Any) -> str:
 def _command_markers(executable: str, command_line: str) -> tuple[str, ...]:
     combined = f"{executable} {command_line}".lower()
     markers: list[str] = []
-    if any(token in combined for token in (" -enc ", " -encodedcommand ", "frombase64string")):
+    if any(
+        token in combined
+        for token in (" -enc ", " -encodedcommand ", "frombase64string")
+    ):
         markers.append("encoded_command")
-    if any(token in combined for token in ("downloadstring(", "invoke-webrequest", "curl.exe http", "certutil -urlcache")):
+    if any(
+        token in combined
+        for token in (
+            "downloadstring(",
+            "invoke-webrequest",
+            "curl.exe http",
+            "certutil -urlcache",
+        )
+    ):
         markers.append("network_payload_retrieval")
-    if any(token in executable.lower() for token in ("\\temp\\", "\\appdata\\", "\\downloads\\")):
+    if any(
+        token in executable.lower()
+        for token in ("\\temp\\", "\\appdata\\", "\\downloads\\")
+    ):
         markers.append("user_writable_executable")
-    if any(token in combined for token in ("rundll32 javascript:", "regsvr32 /s /n /u /i:http")):
+    if any(
+        token in combined
+        for token in (
+            "rundll32 javascript:",
+            "regsvr32 /s /n /u /i:http",
+        )
+    ):
         markers.append("living_off_the_land_pattern")
+    if any(
+        token in combined
+        for token in (
+            "system.net.sockets.tcpclient",
+            "net.sockets.tcpclient",
+            "new-object net.sockets.tcpclient",
+        )
+    ):
+        markers.append("reverse_shell")
+    if any(
+        token in combined
+        for token in (
+            "mimikatz",
+            "sekurlsa::logonpasswords",
+            "sekurlsa::wdigest",
+            "lsadump::sam",
+            "lsadump::secrets",
+        )
+    ) or (
+        "comsvcs.dll" in combined
+        and "minidump" in combined
+        and "lsass" in combined
+    ):
+        markers.append("credential_dumping")
     return tuple(sorted(set(markers)))
 
 
@@ -215,9 +263,15 @@ def parse_windows_connections(
 def _persistence_markers(category: str, command: str, account: str) -> tuple[str, ...]:
     lowered = command.lower()
     markers: list[str] = []
-    if any(token in lowered for token in (" -enc ", " -encodedcommand ", "frombase64string")):
+    if any(
+        token in lowered
+        for token in (" -enc ", " -encodedcommand ", "frombase64string")
+    ):
         markers.append("encoded_command")
-    if any(token in lowered for token in ("\\temp\\", "\\appdata\\", "\\downloads\\")):
+    if any(
+        token in lowered
+        for token in ("\\temp\\", "\\appdata\\", "\\downloads\\")
+    ):
         markers.append("user_writable_target")
     if category == "service_auto" and account.casefold() in {
         "localsystem",
@@ -308,11 +362,11 @@ def parse_windows_auth_events(
     if privacy_identity is None:
         return []
     grouped: dict[tuple[str, str], list[datetime]] = {}
+    source_users: dict[str, set[str]] = {}
+    source_failures: dict[str, int] = {}
     for row in _records(text):
-        user = _string(row.get("User"))
+        user = _string(row.get("User")) or "unknown"
         source = _string(row.get("SourceAddress"))
-        if not user:
-            user = "unknown"
         if not source or source == "-":
             source = "unknown"
         user_hash = privacy_identity.identify_scoped(
@@ -331,11 +385,16 @@ def parse_windows_auth_events(
         except ValueError:
             observed = fallback_time
         grouped.setdefault((source_hash, user_hash), []).append(observed)
+        source_users.setdefault(source_hash, set()).add(user_hash)
+        source_failures[source_hash] = source_failures.get(source_hash, 0) + 1
 
     events: list[SecurityEvent] = []
     for (source_hash, user_hash), timestamps in sorted(grouped.items()):
         observed = max(timestamps, default=fallback_time)
         count = len(timestamps)
+        total_from_source = source_failures.get(source_hash, count)
+        distinct_accounts = len(source_users.get(source_hash, {user_hash}))
+        spray_candidate = total_from_source >= 10 and distinct_accounts >= 5
         digest = hashlib.sha256(
             f"{host_id}|windows-auth|{source_hash}|{user_hash}|{observed.isoformat()}|{count}".encode()
         ).hexdigest()[:20]
@@ -351,11 +410,23 @@ def parse_windows_auth_events(
                     "source_address_hash": source_hash,
                     "user_identity_hash": user_hash,
                     "failed_count": count,
+                    "source_failed_count": total_from_source,
+                    "distinct_accounts": distinct_accounts,
+                    "suspicious_markers": ["credential_spray"]
+                    if spray_candidate
+                    else [],
+                    "credential_spray_candidate": spray_candidate,
                     "raw_source_address_persisted": False,
                     "raw_username_persisted": False,
                     "raw_log_message_persisted": False,
                 },
-                confidence=0.95 if count >= 5 else 0.8,
+                confidence=(
+                    0.98
+                    if spray_candidate
+                    else 0.95
+                    if count >= 5
+                    else 0.8
+                ),
             )
         )
     return events
