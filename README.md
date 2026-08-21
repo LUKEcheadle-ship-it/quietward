@@ -4,7 +4,9 @@ QuietWard is an offline-first, observation-only cybersecurity monitor that expla
 
 ## Release status
 
-`v0.4.0-alpha.2` is an **experimental open-source alpha**. The qualified platforms are:
+`v0.5.0-alpha.1` is the current **detection-hardening candidate** on `feature/detection-hardening-v05`. It is not a published release until the dedicated v0.5 gate and platform qualification pass on the exact candidate SHA.
+
+The last qualified platform targets remain:
 
 - **Windows 11**
 - **Debian 12**
@@ -15,7 +17,15 @@ Windows 10, macOS, and other Linux distributions have not completed independent 
 
 QuietWard monitors processes, listening ports, persistence, selected sensitive files, local security evidence, containers when available, and its own integrity. It correlates changes into findings, stores bounded local evidence, and presents the result in a read-only localhost dashboard.
 
-On Windows, it also displays read-only Microsoft Defender status. Defender evidence is labeled separately and QuietWard does not start scans or change Defender settings.
+The v0.5 detection candidate strengthens that observation layer without adding any response/remediation code:
+
+- bounded same-host cross-subject attack-chain correlation across authentication, privilege, execution, persistence, network, malware and integrity phases;
+- credential-spray recognition across one pseudonymous source and multiple installation-scoped account identities without persisting raw usernames or source IPs;
+- stronger deterministic scoring for explicit high-confidence behaviors such as reverse shells, credential dumping, process injection, dangerous container configurations and corroborated credential spray;
+- Windows document/PDF processes spawning high-risk interpreters/LOLBins as a high-signal parent→child behavior;
+- expanded Linux/Windows behavioral markers while raw command lines remain hashed/redacted according to the existing privacy model.
+
+On Windows, QuietWard also displays read-only Microsoft Defender status. Defender evidence is labeled separately and QuietWard does not start scans or change Defender settings.
 
 ![QuietWard read-only dashboard on Windows](docs/assets/quietward-windows-dashboard.png)
 
@@ -62,7 +72,7 @@ See `docs/FIRST_RUN.md` and `docs/WINDOWS.md` for operating and troubleshooting 
 quietward doctor --config ~/.config/quietward/config.json --pretty
 ```
 
-The Debian path remains the corrected and qualified observation-only alpha.
+The Debian path remains observation-only.
 
 ## What users see
 
@@ -94,6 +104,20 @@ public_listener == false
 
 Outbound connection monitoring is disabled by default. Enable it only when you are ready to establish and review a real-host baseline.
 
+QuietWard remains completely separate from QuietWard Response. This repository contains no Response agent/client/action code.
+
+## Verify the v0.5 detection candidate
+
+Run the dedicated detection gate:
+
+```bash
+python scripts/verify_v05_detection.py
+```
+
+The gate checks the exact `0.5.0a1` version, compiles source/tests, runs the full pytest suite, runs the public-release audit, verifies the observation-only safety invariants, and rejects Response-code residue in the QuietWard repository.
+
+Platform-specific qualification remains required before publication.
+
 ## Build and verify a release candidate
 
 On Windows:
@@ -103,12 +127,6 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_release_
 ```
 
 This runs tests, compilation, the public-release audit, two deterministic builds, archive-hash comparison, and archive verification. It writes the source archive and SHA-256 checksum under `dist\`.
-
-Verify an extracted or downloaded archive with:
-
-```powershell
-py -3 .\scripts\verify_release_bundle.py .\dist\quietward-v0.4.0-alpha.2-source.zip
-```
 
 Linux validation remains available through:
 
@@ -131,7 +149,7 @@ Start with:
 
 - `docs/FIRST_RUN.md`
 - `docs/WINDOWS.md`
-- `docs/releases/v0.4.0-alpha.2.md`
+- `docs/releases/v0.5.0-alpha.1.md`
 - `docs/INTERN_UX_ACCEPTANCE_2026_08.md`
 - `docs/PRIVACY.md`
 - `docs/SECURITY_MODEL.md`
