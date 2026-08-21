@@ -95,7 +95,7 @@ class DetectionHardeningV05Tests(unittest.TestCase):
         )
         chains = [finding for finding in findings if finding.finding_id.startswith("qwf-chain-")]
         self.assertEqual(len(chains), 1)
-        self.assertGreaterEqual(chains[0].severity, Severity.HIGH)
+        self.assertIn(chains[0].severity, {Severity.HIGH, Severity.CRITICAL})
         self.assertIn("cross_subject_host_attack_chain=true", chains[0].reasons)
         self.assertTrue(any(reason.startswith("attack_chain_phases=") for reason in chains[0].reasons))
 
