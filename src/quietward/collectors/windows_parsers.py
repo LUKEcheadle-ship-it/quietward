@@ -12,6 +12,28 @@ from ..privacy_identity import PrivacyIdentity
 from .models import ConnectionRecord, DefenderStatus, PersistenceRecord, ProcessRecord, SocketRecord
 from .privacy import stable_hash
 
+_DOCUMENT_PARENTS = {
+    "winword.exe",
+    "excel.exe",
+    "powerpnt.exe",
+    "outlook.exe",
+    "msaccess.exe",
+    "onenote.exe",
+    "acrord32.exe",
+    "acrobat.exe",
+}
+_DOCUMENT_CHILD_EXECUTORS = {
+    "powershell.exe",
+    "pwsh.exe",
+    "cmd.exe",
+    "wscript.exe",
+    "cscript.exe",
+    "mshta.exe",
+    "rundll32.exe",
+    "regsvr32.exe",
+    "certutil.exe",
+}
+
 
 def parse_windows_defender(text: str) -> DefenderStatus | None:
     rows = _records(text)
@@ -122,7 +144,7 @@ def parse_windows_processes(
     text: str,
     privacy_identity: PrivacyIdentity | None,
 ) -> tuple[ProcessRecord, ...]:
-    result: list[ProcessRecord] = []
+    base: list[ProcessRecord] = []
     for row in _records(text):
         pid = _integer(row.get("ProcessId"))
         if pid <= 0:
@@ -147,7 +169,7 @@ def parse_windows_processes(
             "nt authority\\system",
             "local system",
         }
-        result.append(
+        base.append(
             ProcessRecord(
                 pid=pid,
                 ppid=ppid,
@@ -164,6 +186,32 @@ def parse_windows_processes(
                 ),
                 suspicious_markers=_command_markers(raw_executable, command_line),
                 privileged_context=privileged,
+            )
+        )
+
+    by_pid = {item.pid: item for item in base}
+    result: list[ProcessRecord] = []
+    for item in base:
+        markers = set(item.suspicious_markers)
+        parent = by_pid.get(item.ppid)
+        parent_name = (
+            (parent.executable or parent.command_name).casefold()
+            if parent is not None
+            else ""
+        )
+        child_name = (item.executable or item.command_name).casefold()
+        if parent_name in _DOCUMENT_PARENTS and child_name in _DOCUMENT_CHILD_EXECUTORS:
+            markers.add("document_spawned_interpreter")
+        result.append(
+            ProcessRecord(
+                pid=item.pid,
+                ppid=item.ppid,
+                user=item.user,
+                command_name=item.command_name,
+                executable=item.executable,
+                args_hash=item.args_hash,
+                suspicious_markers=tuple(sorted(markers)),
+                privileged_context=item.privileged_context,
             )
         )
     return tuple(sorted(result, key=lambda item: item.pid))
@@ -220,135 +268,41 @@ def parse_windows_sockets(text: str) -> tuple[SocketRecord, ...]:
             port=port,
             process_name=process,
         )
-        if item.identity not in seen:
-            seen.add(item.identity)
+        identity = item.identity
+        if identity not in seen:
+            seen.add(identity)
             result.append(item)
     return tuple(sorted(result, key=lambda item: item.identity))
 
 
 def parse_windows_connections(
     text: str,
-    privacy_identity: PrivacyIdentity,
-    limit: int = 2000,
+    *,
+    namespace: str = "quietward-v1",
 ) -> tuple[ConnectionRecord, ...]:
-    if limit <= 0:
-        raise ValueError("connection limit must be positive")
     result: list[ConnectionRecord] = []
     seen: set[tuple[str, str, int, str | None]] = set()
     for row in _records(text):
-        remote = _string(row.get("RemoteAddress"))
+        address = _string(row.get("RemoteAddress"))
         port = _integer(row.get("RemotePort"), -1)
-        if not remote or not 0 <= port <= 65535:
+        if not address or not 0 <= port <= 65535:
             continue
+        scope = _destination_scope(address)
         process = _string(row.get("ProcessName")) or None
         item = ConnectionRecord(
             protocol=(_string(row.get("Protocol")) or "tcp").lower(),
-            remote_address_hash=privacy_identity.identify_scoped(
-                remote.casefold(),
-                "windows-remote-address-v1",
+            remote_address_hash=stable_hash(
+                f"outbound:{address}",
+                20,
+                namespace=namespace,
             ),
             remote_port=port,
-            destination_scope=_destination_scope(remote),
+            destination_scope=scope,
             process_name=process,
         )
-        if item.identity in seen:
-            continue
-        seen.add(item.identity)
-        result.append(item)
-        if len(result) >= limit:
-            break
-    return tuple(sorted(result, key=lambda item: item.identity))
-
-
-def _persistence_markers(category: str, command: str, account: str) -> tuple[str, ...]:
-    lowered = command.lower()
-    markers: list[str] = []
-    if any(
-        token in lowered
-        for token in (" -enc ", " -encodedcommand ", "frombase64string")
-    ):
-        markers.append("encoded_command")
-    if any(
-        token in lowered
-        for token in ("\\temp\\", "\\appdata\\", "\\downloads\\")
-    ):
-        markers.append("user_writable_target")
-    if category == "service_auto" and account.casefold() in {
-        "localsystem",
-        "local system",
-        "nt authority\\system",
-    }:
-        markers.append("privileged_service")
-    if any(token in lowered for token in ("http://", "https://")):
-        markers.append("network_target")
-    return tuple(sorted(set(markers)))
-
-
-def parse_windows_persistence(
-    text: str,
-    privacy_identity: PrivacyIdentity,
-    limit: int = 2000,
-) -> tuple[PersistenceRecord, ...]:
-    if limit <= 0:
-        raise ValueError("persistence limit must be positive")
-    result: list[PersistenceRecord] = []
-    for row in _records(text):
-        category = (_string(row.get("Category")) or "unknown").lower()
-        name = _string(row.get("Name"))
-        if not name:
-            continue
-        command = _string(row.get("Command"))
-        state = _string(row.get("State")) or "unknown"
-        account = _string(row.get("Account"))
-        subject_hash = privacy_identity.identify_scoped(
-            f"{category}:{name}",
-            "windows-persistence-subject-v1",
-        )[:24]
-        canonical = json.dumps(
-            {
-                "category": category,
-                "name": name,
-                "command": command,
-                "state": state,
-                "account": account,
-            },
-            sort_keys=True,
-            separators=(",", ":"),
-        )
-        fingerprint = privacy_identity.identify_scoped(
-            canonical,
-            "windows-persistence-record-v1",
-        )
-        metadata: dict[str, Any] = {
-            "state": state,
-            "command_hash": (
-                privacy_identity.identify_scoped(
-                    command,
-                    "windows-persistence-command-v1",
-                )
-                if command
-                else None
-            ),
-            "raw_name_persisted": False,
-            "raw_command_persisted": False,
-            "raw_account_persisted": False,
-        }
-        if account:
-            metadata["account_identity_hash"] = privacy_identity.identify_scoped(
-                account.casefold(),
-                "windows-persistence-account-v1",
-            )
-        result.append(
-            PersistenceRecord(
-                category=category,
-                subject=f"windows:{category}:{subject_hash}",
-                fingerprint=fingerprint,
-                risk_markers=_persistence_markers(category, command, account),
-                metadata=metadata,
-            )
-        )
-        if len(result) >= limit:
-            break
+        if item.identity not in seen:
+            seen.add(item.identity)
+            result.append(item)
     return tuple(sorted(result, key=lambda item: item.identity))
 
 
@@ -358,75 +312,114 @@ def parse_windows_auth_events(
     host_id: str,
     privacy_identity: PrivacyIdentity | None,
     fallback_time: datetime,
-) -> list[SecurityEvent]:
-    if privacy_identity is None:
-        return []
-    grouped: dict[tuple[str, str], list[datetime]] = {}
+) -> tuple[SecurityEvent, ...]:
+    rows = _records(text)
+    grouped: dict[tuple[str, str], list[dict[str, Any]]] = {}
     source_users: dict[str, set[str]] = {}
     source_failures: dict[str, int] = {}
-    for row in _records(text):
-        user = _string(row.get("User")) or "unknown"
-        source = _string(row.get("SourceAddress"))
-        if not source or source == "-":
-            source = "unknown"
-        user_hash = privacy_identity.identify_scoped(
-            user.casefold(),
-            "windows-auth-username-v1",
+    for row in rows:
+        raw_user = _string(row.get("User")) or "unknown"
+        raw_address = _string(row.get("SourceAddress")) or "unknown"
+        address_hash = stable_hash(
+            raw_address,
+            16,
+            namespace="quietward-windows-auth-v1",
         )
-        source_hash = privacy_identity.identify_scoped(
-            source.casefold(),
-            "windows-auth-source-v1",
+        user_identity = (
+            privacy_identity.identify_scoped(
+                raw_user.casefold(),
+                "windows-auth-account-v1",
+            )
+            if privacy_identity is not None
+            else "unavailable"
         )
-        raw_time = _string(row.get("TimeCreated"))
-        try:
-            observed = datetime.fromisoformat(raw_time.replace("Z", "+00:00"))
-            if observed.tzinfo is None:
-                observed = observed.replace(tzinfo=timezone.utc)
-        except ValueError:
-            observed = fallback_time
-        grouped.setdefault((source_hash, user_hash), []).append(observed)
-        source_users.setdefault(source_hash, set()).add(user_hash)
-        source_failures[source_hash] = source_failures.get(source_hash, 0) + 1
+        grouped.setdefault((address_hash, user_identity), []).append(row)
+        source_users.setdefault(address_hash, set()).add(user_identity)
+        source_failures[address_hash] = source_failures.get(address_hash, 0) + 1
 
     events: list[SecurityEvent] = []
-    for (source_hash, user_hash), timestamps in sorted(grouped.items()):
-        observed = max(timestamps, default=fallback_time)
-        count = len(timestamps)
-        total_from_source = source_failures.get(source_hash, count)
-        distinct_accounts = len(source_users.get(source_hash, {user_hash}))
+    for (address_hash, user_identity), group in sorted(grouped.items()):
+        latest = fallback_time
+        for row in group:
+            raw_time = row.get("TimeCreated")
+            if raw_time:
+                try:
+                    parsed = datetime.fromisoformat(str(raw_time).replace("Z", "+00:00"))
+                    if parsed.tzinfo is None:
+                        parsed = parsed.replace(tzinfo=timezone.utc)
+                    latest = max(latest, parsed.astimezone(timezone.utc))
+                except ValueError:
+                    pass
+        total_from_source = source_failures[address_hash]
+        distinct_accounts = len(source_users[address_hash])
         spray_candidate = total_from_source >= 10 and distinct_accounts >= 5
-        digest = hashlib.sha256(
-            f"{host_id}|windows-auth|{source_hash}|{user_hash}|{observed.isoformat()}|{count}".encode()
+        event_id = "fse-" + hashlib.sha256(
+            f"{host_id}|windows-auth|{address_hash}|{user_identity}|{latest.isoformat()}|{len(group)}".encode()
         ).hexdigest()[:20]
         events.append(
             SecurityEvent(
-                event_id="fse-" + digest,
-                observed_at=observed,
+                event_id=event_id,
+                observed_at=latest,
                 host_id=host_id,
                 source="windows_security_log_read_only",
                 kind=EventKind.AUTH_FAILURE,
-                subject=f"auth:{source_hash}:user-{user_hash}",
+                subject=f"auth:{address_hash}:user-{user_identity}",
                 attributes={
-                    "source_address_hash": source_hash,
-                    "user_identity_hash": user_hash,
-                    "failed_count": count,
+                    "source_address_hash": address_hash,
+                    "user_identity_hash": user_identity,
+                    "failed_count": len(group),
                     "source_failed_count": total_from_source,
                     "distinct_accounts": distinct_accounts,
-                    "suspicious_markers": ["credential_spray"]
-                    if spray_candidate
-                    else [],
                     "credential_spray_candidate": spray_candidate,
+                    "suspicious_markers": ["credential_spray"] if spray_candidate else [],
                     "raw_source_address_persisted": False,
                     "raw_username_persisted": False,
                     "raw_log_message_persisted": False,
                 },
-                confidence=(
-                    0.98
-                    if spray_candidate
-                    else 0.95
-                    if count >= 5
-                    else 0.8
-                ),
+                confidence=0.98 if spray_candidate else 0.95 if len(group) >= 5 else 0.8,
             )
         )
-    return events
+    return tuple(events)
+
+
+def parse_windows_persistence(
+    text: str,
+    privacy_identity: PrivacyIdentity | None,
+) -> tuple[PersistenceRecord, ...]:
+    records: list[PersistenceRecord] = []
+    for row in _records(text):
+        category = (_string(row.get("Category")) or "unknown").lower()
+        subject = _string(row.get("Subject")) or "unknown"
+        fingerprint = _string(row.get("Fingerprint"))
+        raw_user = _string(row.get("User"))
+        metadata: dict[str, object] = {
+            "source": _string(row.get("Source")) or "windows-read-only",
+        }
+        if raw_user:
+            metadata["user_identity_hash"] = (
+                privacy_identity.identify_scoped(
+                    raw_user.casefold(),
+                    "windows-persistence-account-v1",
+                )
+                if privacy_identity is not None
+                else "unavailable"
+            )
+        risk_markers = tuple(
+            sorted(
+                {
+                    str(item).strip()
+                    for item in row.get("RiskMarkers", [])
+                    if str(item).strip()
+                }
+            )
+        )
+        records.append(
+            PersistenceRecord(
+                category=category,
+                subject=subject,
+                fingerprint=fingerprint,
+                risk_markers=risk_markers,
+                metadata=metadata,
+            )
+        )
+    return tuple(records)
