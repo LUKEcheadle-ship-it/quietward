@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
+import stat
 import subprocess
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Protocol, Sequence
 
 PS_COMMAND = ("ps", "--no-headers", "-eo", "pid=,ppid=,user=,comm=,args=")
@@ -36,6 +39,7 @@ ALLOWED_COMMANDS = {
     DOCKER_PS_COMMAND,
 }
 _CONTAINER_ID = re.compile(r"^[a-fA-F0-9]{12,64}$")
+_TRUSTED_POSIX_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +53,48 @@ class CommandResult:
 
 class CommandRunner(Protocol):
     def run(self, argv: Sequence[str]) -> CommandResult: ...
+
+
+def _trusted_posix_executable(name: str) -> str | None:
+    resolved = shutil.which(name, path=_TRUSTED_POSIX_PATH)
+    if not resolved:
+        return None
+    try:
+        path = Path(resolved).resolve(strict=True)
+        info = path.stat()
+    except OSError:
+        return None
+    if not path.is_absolute() or not stat.S_ISREG(info.st_mode):
+        return None
+    if info.st_uid != 0 or stat.S_IMODE(info.st_mode) & 0o022:
+        return None
+    trusted_roots = tuple(Path(item).resolve() for item in _TRUSTED_POSIX_PATH.split(os.pathsep))
+    if not any(path.parent == root or root in path.parents for root in trusted_roots):
+        return None
+    return str(path)
+
+
+def _trusted_windows_executable(name: str) -> str | None:
+    lowered = name.casefold()
+    system_root = Path(os.environ.get("SystemRoot") or os.environ.get("WINDIR") or r"C:\Windows")
+    if lowered in {"powershell", "powershell.exe"}:
+        candidate = system_root / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+        return str(candidate) if candidate.is_file() else None
+    if lowered in {"docker", "docker.exe"}:
+        program_files = Path(os.environ.get("ProgramFiles") or r"C:\Program Files")
+        candidates = (
+            program_files / "Docker" / "Docker" / "resources" / "bin" / "docker.exe",
+            program_files / "Docker" / "Docker" / "resources" / "docker.exe",
+        )
+        for candidate in candidates:
+            if candidate.is_file():
+                return str(candidate)
+        return None
+    return None
+
+
+def _trusted_executable(name: str) -> str | None:
+    return _trusted_windows_executable(name) if os.name == "nt" else _trusted_posix_executable(name)
 
 
 class ReadOnlyCommandRunner:
@@ -109,13 +155,19 @@ class ReadOnlyCommandRunner:
 
     def run(self, argv: Sequence[str]) -> CommandResult:
         normalized = self.validate(argv, self.additional_commands)
+        resolved = _trusted_executable(normalized[0])
+        if resolved is None:
+            return CommandResult(
+                normalized,
+                127,
+                "",
+                f"trusted command unavailable: {normalized[0]}",
+            )
+        command = (resolved, *normalized[1:])
         if os.name == "nt":
             allowed_environment = {
-                "PATH",
-                "PATHEXT",
                 "SYSTEMROOT",
                 "WINDIR",
-                "COMSPEC",
                 "TEMP",
                 "TMP",
                 "LOCALAPPDATA",
@@ -131,15 +183,16 @@ class ReadOnlyCommandRunner:
                 for key, value in os.environ.items()
                 if key.upper() in allowed_environment
             }
+            env["PATH"] = str(Path(resolved).parent)
         else:
             env = {
-                "PATH": os.environ.get("PATH", "/usr/sbin:/usr/bin:/sbin:/bin"),
+                "PATH": _TRUSTED_POSIX_PATH,
                 "LANG": "C.UTF-8",
                 "LC_ALL": "C.UTF-8",
             }
         try:
             completed = subprocess.run(
-                normalized,
+                command,
                 shell=False,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
@@ -149,12 +202,12 @@ class ReadOnlyCommandRunner:
                 check=False,
                 env=env,
             )
-        except FileNotFoundError as exc:
+        except FileNotFoundError:
             return CommandResult(
                 normalized,
                 127,
                 "",
-                f"command unavailable: {exc.filename}",
+                f"trusted command unavailable: {normalized[0]}",
             )
         except subprocess.TimeoutExpired as exc:
             return CommandResult(
