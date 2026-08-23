@@ -9,6 +9,7 @@ Restart=on-failure
 RestartSec=10
 TimeoutStopSec=30
 Environment=PYTHONUNBUFFERED=1
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 UMask=0077
 NoNewPrivileges=true
 PrivateTmp=true
