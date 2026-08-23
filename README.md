@@ -17,7 +17,7 @@ Windows 10, macOS, and other Linux distributions have not completed independent 
 
 QuietWard monitors processes, listening ports, persistence, selected sensitive files, local security evidence, containers when available, and its own integrity. It correlates changes into findings, stores bounded local evidence, and presents the result in a read-only localhost dashboard.
 
-The v0.5 detection candidate strengthens that observation layer without adding any response/remediation code:
+The v0.5 detection candidate strengthens that observation layer without adding remediation code:
 
 - bounded same-host cross-subject attack-chain correlation across authentication, privilege, execution, persistence, network, malware and integrity phases;
 - credential-spray recognition across one pseudonymous source and multiple installation-scoped account identities without persisting raw usernames or source IPs;
@@ -106,8 +106,6 @@ public_listener == false
 
 Outbound connection monitoring is disabled by default. Enable it only when you are ready to establish and review a real-host baseline.
 
-QuietWard remains completely separate from QuietWard Response. This repository contains no Response client, Response agent, or remote-response integration.
-
 ## Verify the v0.5 detection candidate
 
 Release qualification uses pytest without making it a runtime dependency. From a release checkout, install the release-test extra:
@@ -122,7 +120,7 @@ Then run the dedicated detection gate:
 python scripts/verify_v05_detection.py
 ```
 
-The gate checks the exact `0.5.0a1` version, compiles source/tests/scripts, runs the full pytest suite with warnings treated as errors, runs the public-release audit, verifies the observation-only safety invariants, verifies v0.5 release metadata, and rejects Response-code residue in the QuietWard repository.
+The gate checks the exact `0.5.0a1` version, compiles source/tests/scripts, runs the full pytest suite with warnings treated as errors, runs the public-release audit, verifies the observation-only safety invariants, and verifies v0.5 release metadata.
 
 Platform-specific Windows 11 and Debian 12 qualification remains required on the exact candidate SHA before publication.
 
