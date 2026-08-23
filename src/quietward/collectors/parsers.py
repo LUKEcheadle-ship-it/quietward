@@ -7,6 +7,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import PurePosixPath
 
+from ..privacy_identity import PrivacyIdentity
 from .models import ConnectionRecord, ContainerRecord, ProcessRecord, SocketRecord
 from .privacy import stable_hash
 
@@ -186,11 +187,17 @@ def _destination_scope(host: str) -> str:
 
 def parse_connections_output(
     text: str,
-    *,
-    namespace: str = "quietward-v1",
+    privacy_identity: PrivacyIdentity | None,
+    max_records: int = 2000,
 ) -> tuple[ConnectionRecord, ...]:
+    if privacy_identity is None:
+        return ()
+    limit = max(1, int(max_records))
     records: list[ConnectionRecord] = []
+    seen: set[tuple[str, str, int, str | None]] = set()
     for line in text.splitlines():
+        if len(records) >= limit:
+            break
         parts = line.strip().split(None, 6)
         if len(parts) < 6:
             continue
@@ -201,18 +208,20 @@ def parse_connections_output(
         if host in {"*", "0.0.0.0", "::"}:
             continue
         process_name = _process_name(parts[6]) if len(parts) == 7 else None
-        records.append(
-            ConnectionRecord(
-                protocol=parts[0].lower(),
-                remote_address_hash=stable_hash(
-                    f"outbound:{host}", 20, namespace=namespace
-                ),
-                remote_port=port,
-                destination_scope=_destination_scope(host),
-                process_name=process_name,
-            )
+        item = ConnectionRecord(
+            protocol=parts[0].lower(),
+            remote_address_hash=privacy_identity.identify_scoped(
+                host,
+                "linux-outbound-address-v1",
+            ),
+            remote_port=port,
+            destination_scope=_destination_scope(host),
+            process_name=process_name,
         )
-    return tuple(sorted(set(records), key=lambda item: item.identity))
+        if item.identity not in seen:
+            seen.add(item.identity)
+            records.append(item)
+    return tuple(sorted(records, key=lambda item: item.identity))
 
 
 def parse_docker_ps_ids(text: str) -> tuple[str, ...]:
@@ -334,7 +343,7 @@ def parse_docker_inspect_output(text: str, base: ContainerRecord) -> ContainerRe
 def parse_auth_journal(
     text: str,
     *,
-    namespace: str = "quietward-v1",
+    privacy_identity: PrivacyIdentity | None,
 ) -> list[dict[str, object]]:
     matches = []
     for line in text.splitlines():
@@ -355,9 +364,14 @@ def parse_auth_journal(
         except (TypeError, ValueError, OSError):
             pass
         ip_match = _IP_PATTERN.search(message)
-        address_hash = stable_hash(
-            ip_match.group("ip"), 16, namespace=namespace
-        ) if ip_match else "unknown"
+        address_hash = (
+            privacy_identity.identify_scoped(
+                ip_match.group("ip"),
+                "linux-auth-source-v1",
+            )
+            if privacy_identity is not None and ip_match
+            else "unknown"
+        )
         user = "unknown"
         for pattern in _USER_PATTERNS:
             found = pattern.search(message)
