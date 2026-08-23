@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import stat
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -18,10 +19,50 @@ from .yara import parse_yara_output
 
 _ALLOWED_BINARIES = {"clamscan", "yara", "trivy", "debsecan"}
 _ALLOWED_SCANNERS = {"clamav", "yara", "trivy", "debsecan"}
+_TRUSTED_POSIX_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 
 def _bounded_error(value: str, limit: int = 500) -> str:
     return " ".join(value.replace("\x00", "").split())[:limit]
+
+
+def _trusted_default_resolver(name: str) -> str | None:
+    if os.name == "nt":
+        resolved = shutil.which(name)
+        if not resolved:
+            return None
+        try:
+            path = Path(resolved).resolve(strict=True)
+        except OSError:
+            return None
+        trusted_roots = [
+            Path(os.environ.get("ProgramFiles") or r"C:\Program Files"),
+            Path(os.environ.get("ProgramFiles(x86)") or r"C:\Program Files (x86)"),
+            Path(os.environ.get("SystemRoot") or os.environ.get("WINDIR") or r"C:\Windows"),
+        ]
+        normalized = str(path).casefold()
+        if not any(
+            normalized == str(root).casefold()
+            or normalized.startswith(str(root).rstrip("\\/").casefold() + os.sep.casefold())
+            for root in trusted_roots
+        ):
+            return None
+        return str(path)
+
+    resolved = shutil.which(name, path=_TRUSTED_POSIX_PATH)
+    if not resolved:
+        return None
+    try:
+        path = Path(resolved).resolve(strict=True)
+        info = path.stat()
+    except OSError:
+        return None
+    if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or stat.S_IMODE(info.st_mode) & 0o022:
+        return None
+    trusted_roots = tuple(Path(item).resolve() for item in _TRUSTED_POSIX_PATH.split(os.pathsep))
+    if not any(path.parent == root or root in path.parents for root in trusted_roots):
+        return None
+    return str(path)
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,17 +80,39 @@ class ScannerExecutionResult:
     command_binary: str | None = None
 
     def to_dict(self) -> dict[str, object]:
-        return {"scanner": self.scanner, "target": self.target, "started_at": self.started_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"), "completed_at": self.completed_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"), "status": self.status, "returncode": self.returncode, "events_count": len(self.events), "error": self.error, "timed_out": self.timed_out, "output_truncated": self.output_truncated, "command_binary": self.command_binary, "shell_used": False, "sudo_used": False, "network_updates_allowed": False, "actions_executed": 0}
+        return {
+            "scanner": self.scanner,
+            "target": self.target,
+            "started_at": self.started_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "completed_at": self.completed_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "status": self.status,
+            "returncode": self.returncode,
+            "events_count": len(self.events),
+            "error": self.error,
+            "timed_out": self.timed_out,
+            "output_truncated": self.output_truncated,
+            "command_binary": self.command_binary,
+            "shell_used": False,
+            "sudo_used": False,
+            "network_updates_allowed": False,
+            "actions_executed": 0,
+        }
 
 
 class ScannerExecutor:
     """Runs bounded, explicitly configured local scans without updates, shell, sudo, or containment."""
 
-    def __init__(self, host_id: str, *, executable_resolver: Callable[[str], str | None] = shutil.which, run_process: Callable[..., subprocess.CompletedProcess[bytes]] = subprocess.run) -> None:
+    def __init__(
+        self,
+        host_id: str,
+        *,
+        executable_resolver: Callable[[str], str | None] | None = None,
+        run_process: Callable[..., subprocess.CompletedProcess[bytes]] = subprocess.run,
+    ) -> None:
         if not host_id.strip():
             raise ValueError("host_id must not be empty")
         self.host_id = host_id
-        self.executable_resolver = executable_resolver
+        self.executable_resolver = executable_resolver or _trusted_default_resolver
         self.run_process = run_process
 
     def build_commands(self, job: ScannerJobSettings) -> list[tuple[tuple[str, ...], str | None]]:
@@ -95,11 +158,18 @@ class ScannerExecutor:
             raise ValueError("scanner binary is not allowed")
         resolved = self.executable_resolver(binary)
         if not resolved:
-            return ScannerExecutionResult(job.scanner, target, started, datetime.now(timezone.utc), "unavailable", 127, (), f"{binary} is not installed")
+            return ScannerExecutionResult(job.scanner, target, started, datetime.now(timezone.utc), "unavailable", 127, (), f"trusted {binary} is not installed")
         command = (resolved, *tuple(str(item) for item in argv[1:]))
-        if any(item in {"sudo", "su", "sh", "bash", "freshclam"} for item in command):
+        if any(os.path.basename(item).casefold() in {"sudo", "su", "sh", "bash", "freshclam"} for item in command):
             raise ValueError("shell, privilege escalation, and updater commands are forbidden")
-        env = {"PATH": os.environ.get("PATH", "/usr/sbin:/usr/bin:/sbin:/bin"), "HOME": os.environ.get("HOME", "/nonexistent"), "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8", "NO_PROXY": "*", "no_proxy": "*"}
+        env = {
+            "PATH": _TRUSTED_POSIX_PATH if os.name != "nt" else str(Path(resolved).parent),
+            "HOME": os.environ.get("HOME", "/nonexistent"),
+            "LANG": "C.UTF-8",
+            "LC_ALL": "C.UTF-8",
+            "NO_PROXY": "*",
+            "no_proxy": "*",
+        }
         try:
             process = self.run_process(command, shell=False, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=job.timeout_seconds, check=False, env=env)
             raw_stdout = bytes(process.stdout or b"")
