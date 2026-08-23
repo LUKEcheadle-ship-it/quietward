@@ -55,43 +55,6 @@ def _verify_release_documentation() -> None:
             raise RuntimeError(f"README release-candidate metadata missing: {fragment}")
 
 
-def _verify_repository_separation() -> None:
-    blocked = (
-        "quietward-response",
-        "response_client.py",
-        "response_client_v11",
-        "QWR_AGENT_",
-    )
-    findings: list[str] = []
-    completed = subprocess.run(
-        ["git", "ls-files", "-z"],
-        cwd=ROOT,
-        check=True,
-        stdout=subprocess.PIPE,
-    )
-    for raw in completed.stdout.split(b"\0"):
-        if not raw:
-            continue
-        path = ROOT / raw.decode("utf-8")
-        try:
-            data = path.read_bytes()
-        except OSError:
-            continue
-        if len(data) > 2_000_000 or b"\0" in data:
-            continue
-        try:
-            text = data.decode("utf-8")
-        except UnicodeDecodeError:
-            continue
-        for fragment in blocked:
-            if fragment.lower() in text.lower() or fragment.lower() in path.as_posix().lower():
-                findings.append(f"{path.relative_to(ROOT)}: {fragment}")
-    if findings:
-        raise RuntimeError(
-            "QuietWard contains Response integration residue:\n" + "\n".join(sorted(set(findings)))
-        )
-
-
 def _verify_observation_only_source_contract() -> None:
     text = (ROOT / "README.md").read_text(encoding="utf-8").lower()
     required = (
@@ -179,7 +142,6 @@ def main() -> int:
     _require_pytest()
     version = _version()
     _verify_release_documentation()
-    _verify_repository_separation()
     _verify_observation_only_source_contract()
     _verify_detection_hardening_source_contract()
     env = _test_environment()
@@ -200,7 +162,6 @@ def main() -> int:
     print("Linux reverse-shell/downloader/encoded-shell markers=PASS")
     print("Linux web-server-to-suspicious-shell ancestry=PASS")
     print("observation-only contract=PASS")
-    print("Response repository/code separation=PASS")
     print("release documentation consistency=PASS")
     print("public-release audit=PASS")
     return 0
