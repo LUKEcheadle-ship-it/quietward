@@ -400,7 +400,6 @@ def parse_windows_auth_events(
                     "distinct_accounts": distinct_accounts,
                     "credential_spray_candidate": spray_candidate,
                     "suspicious_markers": ["credential_spray"] if spray_candidate else [],
-                    "credential_spray_candidate": spray_candidate,
                     "raw_source_address_persisted": False,
                     "raw_username_persisted": False,
                     "raw_log_message_persisted": False,
