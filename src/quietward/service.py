@@ -22,6 +22,60 @@ from .pipeline import SentinelPipeline
 from .scanners import ScannerExecutor
 from .storage import PersistResult, SentinelStore
 
+_SUPPRESSION_BYPASS_MARKERS = {
+    "credential_spray",
+    "credential_dumping",
+    "credential_theft",
+    "reverse_shell",
+    "web_shell",
+    "process_injection",
+    "document_spawned_interpreter",
+    "server_spawned_suspicious_shell",
+    "web_server_spawned_suspicious_shell",
+    "ransomware_recovery_inhibition",
+    "event_log_clearing",
+    "dangerous_container_config",
+    "docker_socket_mount",
+    "host_root_mount",
+}
+
+
+def _event_markers(event: SecurityEvent) -> set[str]:
+    attributes = event.attributes or {}
+    raw = (
+        attributes.get("suspicious_markers")
+        or attributes.get("risk_markers")
+        or attributes.get("security_markers")
+        or []
+    )
+    if isinstance(raw, str):
+        values = [raw]
+    elif isinstance(raw, (list, tuple, set)):
+        values = raw
+    else:
+        values = []
+    return {
+        str(item).strip().casefold().replace("-", "_").replace(" ", "_")
+        for item in values
+        if str(item).strip()
+    }
+
+
+def _bypasses_suppression(event: SecurityEvent) -> bool:
+    if event.kind in {
+        EventKind.MALWARE_SIGNATURE,
+        EventKind.YARA_MATCH,
+        EventKind.SELF_INTEGRITY_CHANGE,
+        EventKind.EVIDENCE_INTEGRITY_FAILURE,
+    }:
+        return True
+    if _event_markers(event) & _SUPPRESSION_BYPASS_MARKERS:
+        return True
+    return bool(
+        event.kind is EventKind.AUTH_FAILURE
+        and (event.attributes or {}).get("credential_spray_candidate") is True
+    )
+
 
 def _atomic_json(path: Path, value: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -208,10 +262,18 @@ class SentinelService:
             *integrity_events,
             *extra_events,
         ]
-        kept, suppressed = self.store.filter_suppressed_events(
-            all_events,
+        bypass_ids = {
+            event.event_id for event in all_events if _bypasses_suppression(event)
+        }
+        suppressible = [
+            event for event in all_events if event.event_id not in bypass_ids
+        ]
+        filtered_kept, suppressed = self.store.filter_suppressed_events(
+            suppressible,
             now=started,
         )
+        kept_ids = bypass_ids | {event.event_id for event in filtered_kept}
+        kept = [event for event in all_events if event.event_id in kept_ids]
         batch = CollectionBatch(collector_batch.snapshot, tuple(kept))
         report = self.pipeline.analyze(kept)
         completed = self.clock()
