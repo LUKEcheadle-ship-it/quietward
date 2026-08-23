@@ -21,7 +21,9 @@ The v0.5 detection candidate strengthens that observation layer without adding r
 
 - bounded same-host cross-subject attack-chain correlation across authentication, privilege, execution, persistence, network, malware and integrity phases;
 - credential-spray recognition across one pseudonymous source and multiple installation-scoped account identities without persisting raw usernames or source IPs;
+- installation-keyed HMAC-SHA256 pseudonyms for authentication source addresses and optional outbound destinations, preventing raw-IP persistence and cross-installation linkability;
 - stronger deterministic scoring for explicit high-confidence behaviors such as reverse shells, credential dumping, process injection, dangerous container configurations and corroborated credential spray;
+- high-confidence behavior such as reverse shells, credential dumping, credential spray and explicit integrity failures bypasses ordinary subject suppression so an old expected/suppressed finding cannot hide a newly dangerous event;
 - Windows document/PDF processes spawning high-risk interpreters/LOLBins as a high-signal parent→child behavior;
 - expanded Linux/Windows behavioral markers while raw command lines remain hashed/redacted according to the existing privacy model.
 
@@ -46,7 +48,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\install_window
 The installer is user-scoped and creates:
 
 - a private local virtual environment;
-- private configuration, state, and evidence-signing keys;
+- private configuration, state, privacy-identity and evidence-signing keys;
 - one limited current-user startup task;
 - a desktop shortcut to the dashboard.
 
@@ -104,7 +106,7 @@ cloud_upload == false
 public_listener == false
 ```
 
-Outbound connection monitoring is disabled by default. Enable it only when you are ready to establish and review a real-host baseline.
+Outbound connection monitoring is disabled by default. When enabled, destination addresses are represented with the installation-keyed privacy identity rather than a public deterministic IP digest. Enable the collector only when you are ready to establish and review a real-host baseline.
 
 ## Verify the v0.5 detection candidate
 
@@ -120,7 +122,7 @@ Then run the dedicated detection gate:
 python scripts/verify_v05_detection.py
 ```
 
-The gate checks the exact `0.5.0a1` version, compiles source/tests/scripts, runs the full pytest suite with warnings treated as errors, runs the public-release audit, verifies the observation-only safety invariants, and verifies v0.5 release metadata.
+The gate checks the exact `0.5.0a1` version, compiles source/tests/scripts, runs the full pytest suite with warnings treated as errors, runs the public-release audit, verifies the observation-only safety invariants, verifies installation-keyed address privacy and high-signal suppression bypass, validates the Windows parser/collector contracts, and verifies v0.5 release metadata.
 
 Platform-specific Windows 11 and Debian 12 qualification remains required on the exact candidate SHA before publication.
 
@@ -159,7 +161,9 @@ Start with:
 - `docs/WINDOWS.md`
 - `docs/releases/v0.5.0-alpha.1.md`
 - `docs/RELEASE_CHECKLIST.md`
-- `docs/INTERN_UX_ACCEPTANCE_2026_08.md`
+- `docs/V05_REVIEW_GUIDE.md`
+- `docs/V05_DETECTION_REGRESSION_MATRIX.md`
+- `docs/V05_MARKETING_KIT.md`
 - `docs/PRIVACY.md`
 - `docs/SECURITY_MODEL.md`
 - `docs/EVIDENCE_INTEGRITY.md`
