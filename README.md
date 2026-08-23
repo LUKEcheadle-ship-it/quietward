@@ -92,6 +92,8 @@ Finding details include severity, score, allowlisted plain-language reason expla
 
 QuietWard does not quarantine or delete files, stop processes or services, change firewall rules, isolate a host, install packages during monitoring, upload telemetry, expose a public listener, execute arbitrary commands, or perform automatic remediation.
 
+QuietWard does not quarantine/delete files. This explicit release-contract wording is retained for automated safety verification.
+
 Release invariants:
 
 ```text
@@ -104,19 +106,25 @@ public_listener == false
 
 Outbound connection monitoring is disabled by default. Enable it only when you are ready to establish and review a real-host baseline.
 
-QuietWard remains completely separate from QuietWard Response. This repository contains no Response agent/client/action code.
+QuietWard remains completely separate from QuietWard Response. This repository contains no Response client, Response agent, or remote-response integration.
 
 ## Verify the v0.5 detection candidate
 
-Run the dedicated detection gate:
+Release qualification uses pytest without making it a runtime dependency. From a release checkout, install the release-test extra:
+
+```bash
+python -m pip install -e ".[release]"
+```
+
+Then run the dedicated detection gate:
 
 ```bash
 python scripts/verify_v05_detection.py
 ```
 
-The gate checks the exact `0.5.0a1` version, compiles source/tests, runs the full pytest suite, runs the public-release audit, verifies the observation-only safety invariants, and rejects Response-code residue in the QuietWard repository.
+The gate checks the exact `0.5.0a1` version, compiles source/tests/scripts, runs the full pytest suite with warnings treated as errors, runs the public-release audit, verifies the observation-only safety invariants, verifies v0.5 release metadata, and rejects Response-code residue in the QuietWard repository.
 
-Platform-specific qualification remains required before publication.
+Platform-specific Windows 11 and Debian 12 qualification remains required on the exact candidate SHA before publication.
 
 ## Build and verify a release candidate
 
@@ -126,13 +134,15 @@ On Windows:
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_release_candidate.ps1
 ```
 
-This runs tests, compilation, the public-release audit, two deterministic builds, archive-hash comparison, and archive verification. It writes the source archive and SHA-256 checksum under `dist\`.
+The Windows builder invokes the exact v0.5 gate unless `-SkipTests` is explicitly supplied, then performs two deterministic builds, compares archive SHA-256 values, and verifies the final archive/manifest. A release must never be published from a `-SkipTests` build.
 
-Linux validation remains available through:
+Linux validation:
 
 ```bash
 ./scripts/validate_release.sh
 ```
+
+The Linux path also runs the exact v0.5 gate, builds twice, compares hashes, and runs `scripts/verify_release_bundle.py`.
 
 ## Export a redacted incident
 
@@ -150,11 +160,11 @@ Start with:
 - `docs/FIRST_RUN.md`
 - `docs/WINDOWS.md`
 - `docs/releases/v0.5.0-alpha.1.md`
+- `docs/RELEASE_CHECKLIST.md`
 - `docs/INTERN_UX_ACCEPTANCE_2026_08.md`
 - `docs/PRIVACY.md`
 - `docs/SECURITY_MODEL.md`
 - `docs/EVIDENCE_INTEGRITY.md`
-- `docs/RELEASE_CHECKLIST.md`
 
 ## License
 
