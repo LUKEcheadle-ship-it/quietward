@@ -7,9 +7,11 @@ trap 'rm -rf "${temporary}"' EXIT
 
 cd "${repo_root}"
 
-PYTHONPATH=src python3 -m unittest discover -s tests -v
-python3 -m compileall -q src tests scripts
-python3 scripts/public_release_audit.py
+# Run the exact v0.5 hardening gate first. It sets its own PYTHONPATH, executes the
+# full pytest suite with warnings-as-errors, verifies product separation and runs
+# the public-release audit.
+python3 scripts/verify_v05_detection.py
+
 python3 scripts/build_release_bundle.py "${temporary}/first.zip"
 python3 scripts/build_release_bundle.py "${temporary}/second.zip"
 
@@ -20,4 +22,6 @@ if [[ "${first_sha}" != "${second_sha}" ]]; then
   exit 1
 fi
 
-printf 'QuietWard release validation passed.\nSource bundle SHA-256: %s\n' "${first_sha}"
+python3 scripts/verify_release_bundle.py "${temporary}/first.zip"
+
+printf 'QuietWard v0.5 release validation passed.\nSource bundle SHA-256: %s\n' "${first_sha}"
