@@ -7,6 +7,18 @@ from typing import Iterable
 from ..contracts import EventKind, SecurityEvent
 from .models import CollectorSnapshot, ConnectionRecord, ContainerRecord, FileRecord, PersistenceRecord, ProcessRecord, SocketRecord
 
+_SERVER_PROCESS_NAMES = {
+    "apache2",
+    "httpd",
+    "nginx",
+    "php-cgi",
+    "php-fpm",
+    "gunicorn",
+    "uwsgi",
+    "caddy",
+}
+_SHELL_PROCESS_NAMES = {"sh", "bash", "dash", "zsh", "ksh"}
+
 
 def _event_id(*parts: object) -> str:
     payload = "|".join(str(part) for part in parts).encode("utf-8", errors="replace")
@@ -62,6 +74,23 @@ def _connection_event(current: CollectorSnapshot, connection: ConnectionRecord, 
     )
 
 
+def _linux_process_markers(
+    process: ProcessRecord,
+    processes_by_pid: dict[int, ProcessRecord],
+) -> tuple[str, ...]:
+    markers = set(process.suspicious_markers)
+    if not markers:
+        return ()
+    parent = processes_by_pid.get(process.ppid)
+    if parent is None:
+        return tuple(sorted(markers))
+    parent_name = (parent.command_name or parent.executable or "").strip().lower()
+    child_name = (process.command_name or process.executable or "").strip().lower()
+    if parent_name in _SERVER_PROCESS_NAMES and child_name in _SHELL_PROCESS_NAMES:
+        markers.add("server_spawned_suspicious_shell")
+    return tuple(sorted(markers))
+
+
 def diff_snapshots(current: CollectorSnapshot, previous: CollectorSnapshot | None) -> list[SecurityEvent]:
     if previous is None:
         return []
@@ -69,12 +98,15 @@ def diff_snapshots(current: CollectorSnapshot, previous: CollectorSnapshot | Non
         raise ValueError("snapshot host_id mismatch")
     observed_at = current.observed_at
     events: list[SecurityEvent] = []
+    processes_by_pid = {item.pid: item for item in current.processes}
 
     for process in _new_items(current.processes, previous.processes, key=lambda item: item.identity):
-        if not process.suspicious_markers:
+        markers = _linux_process_markers(process, processes_by_pid)
+        if not markers:
             continue
         subject = process.executable or process.command_name
-        events.append(SecurityEvent(_event_id(current.host_id, "process", process.identity, observed_at.isoformat()), observed_at, current.host_id, "debian_process_snapshot", EventKind.PROCESS_START, subject, {"pid": process.pid, "ppid": process.ppid, "user_identity_hash": process.user, "command_name": process.command_name, "args_hash": process.args_hash, "suspicious_markers": list(process.suspicious_markers), "privileged_context": process.privileged_context or process.user == "root", "baseline_deviation": 1.0, "raw_arguments_persisted": False, "raw_username_persisted": False}, 0.9))
+        parent = processes_by_pid.get(process.ppid)
+        events.append(SecurityEvent(_event_id(current.host_id, "process", process.identity, observed_at.isoformat()), observed_at, current.host_id, "debian_process_snapshot", EventKind.PROCESS_START, subject, {"pid": process.pid, "ppid": process.ppid, "parent_command_name": parent.command_name if parent is not None else None, "user_identity_hash": process.user, "command_name": process.command_name, "args_hash": process.args_hash, "suspicious_markers": list(markers), "privileged_context": process.privileged_context or process.user == "root", "baseline_deviation": 1.0, "raw_arguments_persisted": False, "raw_username_persisted": False}, 0.95 if "server_spawned_suspicious_shell" in markers else 0.9))
 
     for socket in _new_items(current.sockets, previous.sockets, key=lambda item: item.identity):
         subject = f"{socket.protocol}://{socket.local_address}:{socket.port}"
