@@ -69,9 +69,9 @@ try {
     }
     try {
         if (-not $SkipTests) {
-            Invoke-Python $Runtime @("-m", "unittest", "discover", "-s", "tests", "-v")
-            Invoke-Python $Runtime @("-m", "compileall", "-q", "src", "tests", "scripts")
-            Invoke-Python $Runtime @("scripts/public_release_audit.py", ".")
+            # v0.5 uses pytest-style hardening regressions. The dedicated release gate
+            # runs the full suite, compile checks, separation checks and public audit.
+            Invoke-Python $Runtime @("scripts/verify_v05_detection.py")
         }
 
         Invoke-Python $Runtime @("scripts/build_release_bundle.py", $BuildOne, "--root", $Root)
