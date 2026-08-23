@@ -4,13 +4,13 @@ import hashlib
 import ipaddress
 import json
 import ntpath
+import re
 from datetime import datetime, timezone
 from typing import Any
 
 from ..contracts import EventKind, SecurityEvent
 from ..privacy_identity import PrivacyIdentity
 from .models import ConnectionRecord, DefenderStatus, PersistenceRecord, ProcessRecord, SocketRecord
-from .privacy import stable_hash
 
 _DOCUMENT_PARENTS = {
     "winword.exe",
@@ -138,8 +138,6 @@ def _command_markers(executable: str, command_line: str) -> tuple[str, ...]:
     ):
         markers.append("credential_dumping")
 
-    # Explicit recovery-inhibition forms are high-signal ransomware/impact behavior.
-    # Allow the normal `.exe` spelling while avoiding read/list operations.
     if any(
         re.search(pattern, combined)
         for pattern in (
@@ -154,15 +152,11 @@ def _command_markers(executable: str, command_line: str) -> tuple[str, ...]:
     ):
         markers.append("ransomware_recovery_inhibition")
 
-    # Explicit event-log clearing is security-relevant defense evasion. Reading,
-    # exporting, or querying logs does not trigger this marker.
     if re.search(r"\bwevtutil(?:\.exe)?\s+cl(?:ear-log)?\s+", combined) or any(
         token in combined for token in ("clear-eventlog ", "remove-eventlog ")
     ):
         markers.append("event_log_clearing")
 
-    # Defender preference tampering is useful context but can also be legitimate
-    # administration, so it receives a bounded score rather than a HIGH floor.
     if (
         "set-mppreference" in combined
         and "disablerealtimemonitoring" in combined
@@ -310,12 +304,17 @@ def parse_windows_sockets(text: str) -> tuple[SocketRecord, ...]:
 
 def parse_windows_connections(
     text: str,
-    *,
-    namespace: str = "quietward-v1",
+    privacy_identity: PrivacyIdentity | None,
+    max_records: int = 2000,
 ) -> tuple[ConnectionRecord, ...]:
+    if privacy_identity is None:
+        return ()
+    limit = max(1, int(max_records))
     result: list[ConnectionRecord] = []
     seen: set[tuple[str, str, int, str | None]] = set()
     for row in _records(text):
+        if len(result) >= limit:
+            break
         address = _string(row.get("RemoteAddress"))
         port = _integer(row.get("RemotePort"), -1)
         if not address or not 0 <= port <= 65535:
@@ -324,10 +323,9 @@ def parse_windows_connections(
         process = _string(row.get("ProcessName")) or None
         item = ConnectionRecord(
             protocol=(_string(row.get("Protocol")) or "tcp").lower(),
-            remote_address_hash=stable_hash(
-                f"outbound:{address}",
-                20,
-                namespace=namespace,
+            remote_address_hash=privacy_identity.identify_scoped(
+                address,
+                "windows-outbound-address-v1",
             ),
             remote_port=port,
             destination_scope=scope,
@@ -346,6 +344,8 @@ def parse_windows_auth_events(
     privacy_identity: PrivacyIdentity | None,
     fallback_time: datetime,
 ) -> tuple[SecurityEvent, ...]:
+    if privacy_identity is None:
+        return ()
     rows = _records(text)
     grouped: dict[tuple[str, str], list[dict[str, Any]]] = {}
     source_users: dict[str, set[str]] = {}
@@ -353,18 +353,13 @@ def parse_windows_auth_events(
     for row in rows:
         raw_user = _string(row.get("User")) or "unknown"
         raw_address = _string(row.get("SourceAddress")) or "unknown"
-        address_hash = stable_hash(
+        address_hash = privacy_identity.identify_scoped(
             raw_address,
-            16,
-            namespace="quietward-windows-auth-v1",
+            "windows-auth-source-v1",
         )
-        user_identity = (
-            privacy_identity.identify_scoped(
-                raw_user.casefold(),
-                "windows-auth-account-v1",
-            )
-            if privacy_identity is not None
-            else "unavailable"
+        user_identity = privacy_identity.identify_scoped(
+            raw_user.casefold(),
+            "windows-auth-account-v1",
         )
         grouped.setdefault((address_hash, user_identity), []).append(row)
         source_users.setdefault(address_hash, set()).add(user_identity)
@@ -405,9 +400,11 @@ def parse_windows_auth_events(
                     "distinct_accounts": distinct_accounts,
                     "credential_spray_candidate": spray_candidate,
                     "suspicious_markers": ["credential_spray"] if spray_candidate else [],
+                    "credential_spray_candidate": spray_candidate,
                     "raw_source_address_persisted": False,
                     "raw_username_persisted": False,
                     "raw_log_message_persisted": False,
+                    "address_identity": "installation_keyed_hmac_sha256",
                 },
                 confidence=0.98 if spray_candidate else 0.95 if len(group) >= 5 else 0.8,
             )
@@ -415,44 +412,82 @@ def parse_windows_auth_events(
     return tuple(events)
 
 
+def _persistence_markers(category: str, command: str, account: str) -> tuple[str, ...]:
+    markers: set[str] = set()
+    lowered = command.casefold()
+    if any(token in lowered for token in ("\\appdata\\", "\\temp\\", "\\downloads\\")):
+        markers.add("user_writable_target")
+    if any(token in lowered for token in ("powershell", "pwsh", "mshta", "rundll32", "regsvr32", "wscript", "cscript")):
+        markers.add("unexpected_interpreter")
+    normalized_account = account.casefold()
+    if category == "service_auto" and normalized_account in {
+        "localsystem",
+        "local system",
+        "nt authority\\system",
+        "system",
+    }:
+        markers.add("privileged_service")
+    return tuple(sorted(markers))
+
+
 def parse_windows_persistence(
     text: str,
     privacy_identity: PrivacyIdentity | None,
+    max_records: int = 2000,
 ) -> tuple[PersistenceRecord, ...]:
+    if privacy_identity is None:
+        return ()
+    limit = max(1, int(max_records))
     records: list[PersistenceRecord] = []
     for row in _records(text):
+        if len(records) >= limit:
+            break
         category = (_string(row.get("Category")) or "unknown").lower()
-        subject = _string(row.get("Subject")) or "unknown"
-        fingerprint = _string(row.get("Fingerprint"))
-        raw_user = _string(row.get("User"))
-        metadata: dict[str, object] = {
-            "source": _string(row.get("Source")) or "windows-read-only",
-        }
-        if raw_user:
-            metadata["user_identity_hash"] = (
-                privacy_identity.identify_scoped(
-                    raw_user.casefold(),
-                    "windows-persistence-account-v1",
-                )
-                if privacy_identity is not None
-                else "unavailable"
+        raw_name = _string(row.get("Name")) or "unknown"
+        raw_command = _string(row.get("Command"))
+        state = (_string(row.get("State")) or "unknown").lower()
+        raw_account = _string(row.get("Account"))
+
+        name_identity = privacy_identity.identify_scoped(
+            raw_name,
+            "windows-persistence-name-v1",
+        )
+        command_identity = (
+            privacy_identity.identify_scoped(
+                raw_command,
+                "windows-persistence-command-v1",
             )
-        risk_markers = tuple(
-            sorted(
-                {
-                    str(item).strip()
-                    for item in row.get("RiskMarkers", [])
-                    if str(item).strip()
-                }
+            if raw_command
+            else "unavailable"
+        )
+        account_identity = (
+            privacy_identity.identify_scoped(
+                raw_account.casefold(),
+                "windows-persistence-account-v1",
             )
+            if raw_account
+            else "unavailable"
+        )
+        fingerprint = privacy_identity.identify_scoped(
+            "\x00".join((category, raw_name, raw_command, state, raw_account)),
+            "windows-persistence-record-v1",
         )
         records.append(
             PersistenceRecord(
                 category=category,
-                subject=subject,
+                subject=f"windows-persistence:{category}:{name_identity}",
                 fingerprint=fingerprint,
-                risk_markers=risk_markers,
-                metadata=metadata,
+                risk_markers=_persistence_markers(category, raw_command, raw_account),
+                metadata={
+                    "source": "windows-read-only",
+                    "state": state,
+                    "name_identity_hash": name_identity,
+                    "command_identity_hash": command_identity,
+                    "account_identity_hash": account_identity,
+                    "raw_name_persisted": False,
+                    "raw_command_persisted": False,
+                    "raw_account_persisted": False,
+                },
             )
         )
     return tuple(records)
