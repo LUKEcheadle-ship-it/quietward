@@ -15,11 +15,16 @@ def test_v05_release_notes_match_detection_hardening_and_safety_boundary() -> No
         "bounded 15-minute window",
         "credential spray",
         "raw source ip is not persisted",
+        "installation-keyed hmac-sha256",
+        "same raw address produces different durable identities",
+        "suppression safety",
+        "reverse shells",
         "document_spawned_interpreter",
         "web_server_spawned_suspicious_shell",
-        "ransomware_recovery_inhibition",
-        "event_log_clearing",
+        "ransomware recovery inhibition",
+        "event-log clearing",
         "defender_tamper_command",
+        "windows collector/parser contracts",
         "does not quarantine/delete files",
         "actions_executed == 0",
         "executable_proposals == 0",
@@ -33,6 +38,8 @@ def test_v05_readme_keeps_public_product_observation_only() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8").lower()
     assert "0.5.0-alpha.1" in readme
     assert "observation-only" in readme
+    assert "installation-keyed hmac-sha256" in readme
+    assert "bypasses ordinary subject suppression" in readme
     assert "does not quarantine or delete files" in readme
     assert "stop processes or services" in readme
     assert "change firewall rules" in readme
