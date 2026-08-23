@@ -50,6 +50,13 @@ class _Store:
     def scanner_last_run(self, scanner):
         return None
 
+    def summary(self):
+        return {
+            "schema_version": 4,
+            "actions_executed": 0,
+            "evidence_chain": {"valid": True, "cycles_checked": 0},
+        }
+
 
 class _Pipeline:
     def __init__(self) -> None:
@@ -78,10 +85,13 @@ class _Scanners:
         raise AssertionError("no scanner jobs expected")
 
 
-def _service(event: SecurityEvent):
+def _service(event: SecurityEvent, tmp_path):
     store = _Store()
     pipeline = _Pipeline()
-    config = SimpleNamespace(scanners=())
+    config = SimpleNamespace(
+        scanners=(),
+        service=SimpleNamespace(health_path=tmp_path / "health.json"),
+    )
     service = QuietWardService(
         config,
         collector=_Collector(event),
@@ -94,7 +104,7 @@ def _service(event: SecurityEvent):
     return service, store, pipeline
 
 
-def test_reverse_shell_process_bypasses_subject_suppression() -> None:
+def test_reverse_shell_process_bypasses_subject_suppression(tmp_path) -> None:
     event = SecurityEvent(
         "event-high",
         NOW,
@@ -105,7 +115,7 @@ def test_reverse_shell_process_bypasses_subject_suppression() -> None:
         {"suspicious_markers": ["reverse_shell"]},
         0.95,
     )
-    service, store, pipeline = _service(event)
+    service, store, pipeline = _service(event, tmp_path)
     result = service.run_cycle()
 
     assert store.suppression_inputs == []
@@ -113,7 +123,7 @@ def test_reverse_shell_process_bypasses_subject_suppression() -> None:
     assert result.suppressed_events == 0
 
 
-def test_credential_spray_bypasses_subject_suppression() -> None:
+def test_credential_spray_bypasses_subject_suppression(tmp_path) -> None:
     event = SecurityEvent(
         "event-spray",
         NOW,
@@ -127,7 +137,7 @@ def test_credential_spray_bypasses_subject_suppression() -> None:
         },
         0.98,
     )
-    service, store, pipeline = _service(event)
+    service, store, pipeline = _service(event, tmp_path)
     result = service.run_cycle()
 
     assert store.suppression_inputs == []
@@ -135,7 +145,7 @@ def test_credential_spray_bypasses_subject_suppression() -> None:
     assert result.suppressed_events == 0
 
 
-def test_low_signal_process_can_still_be_suppressed() -> None:
+def test_low_signal_process_can_still_be_suppressed(tmp_path) -> None:
     event = SecurityEvent(
         "event-low",
         NOW,
@@ -146,7 +156,7 @@ def test_low_signal_process_can_still_be_suppressed() -> None:
         {"suspicious_markers": ["encoded_command"]},
         0.7,
     )
-    service, store, pipeline = _service(event)
+    service, store, pipeline = _service(event, tmp_path)
     result = service.run_cycle()
 
     assert store.suppression_inputs == [event]
