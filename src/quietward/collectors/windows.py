@@ -89,6 +89,7 @@ class WindowsReadOnlyCollector:
         self.privacy_identity: PrivacyIdentity | None = None
         if (
             self.config.include_processes
+            or self.config.include_connections
             or self.config.include_auth_events
             or self.config.include_persistence
         ) and self.config.privacy_identity_key_path is not None:
