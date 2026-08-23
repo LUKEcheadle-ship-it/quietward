@@ -9,9 +9,13 @@ from quietward.collectors.parsers import (
     parse_ps_output,
     parse_ss_output,
 )
+from quietward.privacy_identity import PrivacyIdentity
 
 
 class ParserTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.identity = PrivacyIdentity(b"k" * 32)
+
     def test_process_arguments_are_hashed_not_persisted(self) -> None:
         secret = "super-secret-token"
         rows = parse_ps_output(f"100 1 root bash /tmp/dropper --token {secret} | bash\n")
@@ -28,7 +32,7 @@ class ParserTests(unittest.TestCase):
         self.assertTrue(rows[0].external_bind)
         self.assertEqual(rows[0].process_name, "sshd")
 
-    def test_auth_parser_hashes_source_address(self) -> None:
+    def test_auth_parser_uses_installation_keyed_source_identity(self) -> None:
         raw_ip = "203.0.113.42"
         text = json.dumps(
             {
@@ -36,10 +40,14 @@ class ParserTests(unittest.TestCase):
                 "__REALTIME_TIMESTAMP": "1785430800000000",
             }
         )
-        rows = parse_auth_journal(text)
+        rows = parse_auth_journal(text, privacy_identity=self.identity)
         self.assertEqual(len(rows), 1)
         self.assertNotIn(raw_ip, json.dumps(rows, default=str))
         self.assertEqual(rows[0]["user"], "admin")
+        self.assertEqual(
+            rows[0]["source_address_hash"],
+            self.identity.identify_scoped(raw_ip, "linux-auth-source-v1"),
+        )
 
     def test_docker_parser_hashes_container_id(self) -> None:
         raw_id = "a" * 64
