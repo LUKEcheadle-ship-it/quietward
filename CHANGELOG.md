@@ -2,7 +2,7 @@
 
 ## 0.5.0-alpha.1 - 2026-08-23
 
-Detection-hardening candidate. QuietWard remains observation-only and contains no Response integration or executable remediation.
+Detection-hardening candidate. QuietWard remains observation-only with no executable remediation.
 
 ### Added
 
@@ -23,7 +23,6 @@ Detection-hardening candidate. QuietWard remains observation-only and contains n
 - Cross-subject chains require bounded same-host temporal/phase corroboration rather than simple unrelated event diversity.
 - New ancestry detectors use only metadata already present in read-only snapshots.
 - Release verification continues to enforce `actions_executed == 0`, `executable_proposals == 0`, loopback-only dashboard binding, no cloud upload, and no public listener.
-- Repository-separation checks reject QuietWard Response code/config residue from the QuietWard release candidate.
 
 ### Release qualification
 
