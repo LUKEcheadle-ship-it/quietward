@@ -12,6 +12,9 @@ license = {text = "MIT"}
 authors = [{name = "Luke Cheadle"}]
 dependencies = []
 
+[project.optional-dependencies]
+release = ["pytest>=8,<9"]
+
 [project.scripts]
 quietward = "quietward.console:main"
 
