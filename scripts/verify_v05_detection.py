@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import importlib.util
+import os
 import re
 import subprocess
 import sys
@@ -9,9 +11,24 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def _run(command: list[str]) -> None:
+def _test_environment() -> dict[str, str]:
+    env = os.environ.copy()
+    source = str(ROOT / "src")
+    existing = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = source if not existing else source + os.pathsep + existing
+    return env
+
+
+def _run(command: list[str], *, env: dict[str, str] | None = None) -> None:
     print("\n>>>", " ".join(command), flush=True)
-    subprocess.run(command, cwd=ROOT, check=True)
+    subprocess.run(command, cwd=ROOT, check=True, env=env)
+
+
+def _require_pytest() -> None:
+    if importlib.util.find_spec("pytest") is None:
+        raise RuntimeError(
+            "pytest is required for QuietWard v0.5 release qualification because the v0.5 hardening suite includes pytest-style regression tests"
+        )
 
 
 def _version() -> str:
@@ -23,6 +40,19 @@ def _version() -> str:
     if 'version = "0.5.0a1"' not in pyproject:
         raise RuntimeError("pyproject version is not 0.5.0a1")
     return match.group(1)
+
+
+def _verify_release_documentation() -> None:
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    release_notes = ROOT / "docs" / "releases" / "v0.5.0-alpha.1.md"
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    if "## 0.5.0-alpha.1" not in changelog:
+        raise RuntimeError("CHANGELOG.md is missing the v0.5.0-alpha.1 release entry")
+    if not release_notes.is_file():
+        raise RuntimeError("v0.5.0-alpha.1 release notes are missing")
+    for fragment in ("v0.5.0-alpha.1", "0.5.0a1", "feature/detection-hardening-v05"):
+        if fragment not in readme:
+            raise RuntimeError(f"README release-candidate metadata missing: {fragment}")
 
 
 def _verify_repository_separation() -> None:
@@ -78,19 +108,11 @@ def _verify_observation_only_source_contract() -> None:
 
 
 def _verify_detection_hardening_source_contract() -> None:
-    correlation = (ROOT / "src" / "quietward" / "correlation.py").read_text(
-        encoding="utf-8"
-    )
+    correlation = (ROOT / "src" / "quietward" / "correlation.py").read_text(encoding="utf-8")
     scoring = (ROOT / "src" / "quietward" / "scoring.py").read_text(encoding="utf-8")
-    debian = (ROOT / "src" / "quietward" / "collectors" / "debian.py").read_text(
-        encoding="utf-8"
-    )
-    parsers = (ROOT / "src" / "quietward" / "collectors" / "parsers.py").read_text(
-        encoding="utf-8"
-    )
-    windows = (
-        ROOT / "src" / "quietward" / "collectors" / "windows_parsers.py"
-    ).read_text(encoding="utf-8")
+    debian = (ROOT / "src" / "quietward" / "collectors" / "debian.py").read_text(encoding="utf-8")
+    parsers = (ROOT / "src" / "quietward" / "collectors" / "parsers.py").read_text(encoding="utf-8")
+    windows = (ROOT / "src" / "quietward" / "collectors" / "windows_parsers.py").read_text(encoding="utf-8")
 
     required = {
         "correlation.py": (
@@ -154,13 +176,16 @@ def _verify_detection_hardening_source_contract() -> None:
 
 
 def main() -> int:
+    _require_pytest()
     version = _version()
+    _verify_release_documentation()
     _verify_repository_separation()
     _verify_observation_only_source_contract()
     _verify_detection_hardening_source_contract()
-    _run([sys.executable, "-m", "compileall", "-q", "src", "tests"])
-    _run([sys.executable, "-m", "pytest", "-q"])
-    _run([sys.executable, "scripts/public_release_audit.py"])
+    env = _test_environment()
+    _run([sys.executable, "-m", "compileall", "-q", "src", "tests", "scripts"], env=env)
+    _run([sys.executable, "-m", "pytest", "-q", "-W", "error"], env=env)
+    _run([sys.executable, "scripts/public_release_audit.py"], env=env)
 
     print("\nQUIETWARD 0.5.0-ALPHA.1 DETECTION GATE: PASS")
     print(f"version={version}")
@@ -176,6 +201,7 @@ def main() -> int:
     print("Linux web-server-to-suspicious-shell ancestry=PASS")
     print("observation-only contract=PASS")
     print("Response repository/code separation=PASS")
+    print("release documentation consistency=PASS")
     print("public-release audit=PASS")
     return 0
 
