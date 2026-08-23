@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
 
 from quietward.collectors.command import CONNECTIONS_COMMAND, CommandResult
 from quietward.collectors.debian import (
@@ -21,20 +23,25 @@ class ConnectionBoundTests(unittest.TestCase):
                 )
                 return CommandResult(tuple(argv), 0, output, "")
 
-        runner = Runner()
-        batch = DebianReadOnlyCollector(
-            DebianCollectorConfig(
-                sensitive_files=(),
-                include_processes=False,
-                include_sockets=False,
-                include_connections=True,
-                include_auth_journal=False,
-                include_docker=False,
-                include_persistence=False,
-            ),
-            runner=runner,
-            host_id="host-test",
-        ).collect()
+        with tempfile.TemporaryDirectory() as temporary:
+            key_path = Path(temporary) / "privacy.key"
+            key_path.write_bytes(b"k" * 32)
+            key_path.chmod(0o600)
+            runner = Runner()
+            batch = DebianReadOnlyCollector(
+                DebianCollectorConfig(
+                    sensitive_files=(),
+                    include_processes=False,
+                    include_sockets=False,
+                    include_connections=True,
+                    include_auth_journal=False,
+                    include_docker=False,
+                    include_persistence=False,
+                    privacy_identity_key_path=key_path,
+                ),
+                runner=runner,
+                host_id="host-test",
+            ).collect()
         self.assertEqual(runner.assert_command, CONNECTIONS_COMMAND)
         self.assertEqual(len(batch.snapshot.connections), MAX_CONNECTION_RECORDS)
         self.assertEqual(batch.events, ())
