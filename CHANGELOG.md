@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.5.0-alpha.1 - 2026-08-23
+
+Detection-hardening candidate. QuietWard remains observation-only and contains no Response integration or executable remediation.
+
+### Added
+
+- Bounded 15-minute same-host cross-subject attack-chain correlation for corroborated multi-stage activity.
+- Privacy-preserving credential-spray aggregation on Windows and Debian without persisting raw source addresses or usernames.
+- Process/network corroboration using existing bounded process names and hashed destination identity.
+- High-confidence deterministic scoring for reverse shells, credential dumping, process injection, document-spawned interpreters, ransomware recovery inhibition, event-log clearing, and dangerous container configurations.
+- Windows document/PDF application to interpreter/LOLBin parent-child detection with negative controls for ordinary child processes.
+- Windows ransomware recovery-inhibition and event-log-clearing behavioral markers.
+- Linux web-server to already-suspicious shell ancestry enrichment without collecting or persisting raw command arguments.
+- Dedicated v0.5 adversarial, false-positive, process/network, parent-child, release-contract, and detection-matrix regression suites.
+- `scripts/verify_v05_detection.py` as the v0.5 exact release/detection gate.
+
+### Hardened
+
+- Large multi-account credential sprays are promoted to a HIGH priority floor only after strong source/account corroboration.
+- High-signal behavioral floors affect prioritization only and never authorize a host action.
+- Cross-subject chains require bounded same-host temporal/phase corroboration rather than simple unrelated event diversity.
+- New ancestry detectors use only metadata already present in read-only snapshots.
+- Release verification continues to enforce `actions_executed == 0`, `executable_proposals == 0`, loopback-only dashboard binding, no cloud upload, and no public listener.
+- Repository-separation checks reject QuietWard Response code/config residue from the QuietWard release candidate.
+
+### Release qualification
+
+Run:
+
+```text
+python scripts/verify_v05_detection.py
+```
+
+Then build the deterministic release archive on Windows with:
+
+```text
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_release_candidate.ps1
+```
+
+The archive verifier requires the versioned release notes, manifest/content hashes, deterministic two-build SHA match, public-release audit, and observation-only invariants.
+
 ## 0.4.0-alpha.2 - 2026-08-17
 
 - Group dashboard findings by normalized title, subject category, and detector family while preserving every original record and incident link.
