@@ -13,23 +13,30 @@ from quietward.collectors.models import CollectorSnapshot
 from quietward.collectors.parsers import parse_connections_output
 from quietward.config import QuietWardConfig
 from quietward.contracts import EventKind
+from quietward.privacy_identity import PrivacyIdentity
 
 NOW = datetime(2026, 7, 31, 15, 0, tzinfo=timezone.utc)
+IDENTITY = PrivacyIdentity(b"k" * 32)
 
 
 class ConnectionTests(unittest.TestCase):
     def test_exact_connection_command_is_allowlisted(self) -> None:
         self.assertEqual(ReadOnlyCommandRunner.validate(CONNECTIONS_COMMAND), CONNECTIONS_COMMAND)
 
-    def test_parser_hashes_remote_addresses(self) -> None:
+    def test_parser_uses_keyed_remote_address_identity(self) -> None:
         remote = "203.0.113.44"
         rows = parse_connections_output(
-            f'tcp ESTAB 0 0 192.168.1.10:55000 {remote}:443 users:(("curl",pid=22,fd=3))\n'
+            f'tcp ESTAB 0 0 192.168.1.10:55000 {remote}:443 users:(("curl",pid=22,fd=3))\n',
+            IDENTITY,
         )
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0].remote_port, 443)
         self.assertEqual(rows[0].process_name, "curl")
         self.assertNotIn(remote, json.dumps(rows[0].to_dict()))
+        self.assertEqual(
+            rows[0].remote_address_hash,
+            IDENTITY.identify_scoped(remote, "linux-outbound-address-v1"),
+        )
         self.assertFalse(rows[0].to_dict()["raw_remote_address_persisted"])
 
     def test_scope_classification(self) -> None:
@@ -37,12 +44,18 @@ class ConnectionTests(unittest.TestCase):
             'tcp ESTAB 0 0 127.0.0.1:5000 127.0.0.1:8000 users:(("python",pid=1,fd=3))',
             'tcp ESTAB 0 0 192.168.1.10:5001 10.0.0.2:443 users:(("app",pid=2,fd=3))',
             'tcp ESTAB 0 0 192.168.1.10:5002 8.8.8.8:53 users:(("dns",pid=3,fd=3))',
-        ]))
+        ]), IDENTITY)
         self.assertEqual({row.destination_scope for row in rows}, {"private", "public", "loopback"})
 
     def test_first_snapshot_is_silent_and_new_connection_emits_event(self) -> None:
-        first_connection = parse_connections_output('tcp ESTAB 0 0 192.168.1.10:5000 10.0.0.2:443 users:(("app",pid=2,fd=3))')
-        second_connection = parse_connections_output('tcp ESTAB 0 0 192.168.1.10:5001 8.8.8.8:53 users:(("dns",pid=3,fd=3))')
+        first_connection = parse_connections_output(
+            'tcp ESTAB 0 0 192.168.1.10:5000 10.0.0.2:443 users:(("app",pid=2,fd=3))',
+            IDENTITY,
+        )
+        second_connection = parse_connections_output(
+            'tcp ESTAB 0 0 192.168.1.10:5001 8.8.8.8:53 users:(("dns",pid=3,fd=3))',
+            IDENTITY,
+        )
         first = CollectorSnapshot(NOW, "host-a", connections=first_connection)
         second = CollectorSnapshot(NOW + timedelta(minutes=1), "host-a", connections=(*first_connection, *second_connection))
         self.assertEqual(diff_snapshots(first, None), [])
@@ -75,15 +88,49 @@ class ConnectionTests(unittest.TestCase):
         self.assertEqual(disabled_runner.calls, [])
         self.assertEqual(disabled.snapshot.connections, ())
 
-        enabled_runner = Runner()
-        enabled = DebianReadOnlyCollector(
-            DebianCollectorConfig(sensitive_files=(), include_processes=False, include_sockets=False, include_connections=True, include_auth_journal=False, include_docker=False, include_persistence=False),
-            runner=enabled_runner,
-            host_id="host-a",
-        ).collect()
+        with tempfile.TemporaryDirectory() as temporary:
+            key_path = Path(temporary) / "privacy.key"
+            key_path.write_bytes(b"k" * 32)
+            key_path.chmod(0o600)
+            enabled_runner = Runner()
+            enabled = DebianReadOnlyCollector(
+                DebianCollectorConfig(
+                    sensitive_files=(),
+                    include_processes=False,
+                    include_sockets=False,
+                    include_connections=True,
+                    include_auth_journal=False,
+                    include_docker=False,
+                    include_persistence=False,
+                    privacy_identity_key_path=key_path,
+                ),
+                runner=enabled_runner,
+                host_id="host-a",
+            ).collect()
         self.assertEqual(enabled_runner.calls, [CONNECTIONS_COMMAND])
         self.assertEqual(len(enabled.snapshot.connections), 1)
         self.assertEqual(enabled.events, ())
+
+    def test_connection_collection_fails_closed_without_privacy_identity(self) -> None:
+        class Runner:
+            def run(self, argv):
+                return CommandResult(tuple(argv), 0, 'tcp ESTAB 0 0 192.168.1.10:5002 8.8.8.8:53 users:(("dns",pid=3,fd=3))', '')
+
+        batch = DebianReadOnlyCollector(
+            DebianCollectorConfig(
+                sensitive_files=(),
+                include_processes=False,
+                include_sockets=False,
+                include_connections=True,
+                include_auth_journal=False,
+                include_docker=False,
+                include_persistence=False,
+            ),
+            runner=Runner(),
+            host_id="host-a",
+        ).collect()
+        self.assertEqual(batch.snapshot.connections, ())
+        self.assertTrue(any("privacy identity unavailable" in item for item in batch.snapshot.errors))
 
     def test_connection_monitoring_is_opt_in_and_raw_destinations_are_forbidden(self) -> None:
         state = str(Path(tempfile.gettempdir()) / "quietward-connections")
