@@ -53,6 +53,8 @@ def _verify_release_documentation() -> None:
     for fragment in ("v0.5.0-alpha.1", "0.5.0a1", "feature/detection-hardening-v05"):
         if fragment not in readme:
             raise RuntimeError(f"README release-candidate metadata missing: {fragment}")
+    if "installation-keyed" not in readme.lower():
+        raise RuntimeError("README must document installation-keyed address privacy")
 
 
 def _verify_observation_only_source_contract() -> None:
@@ -73,8 +75,10 @@ def _verify_observation_only_source_contract() -> None:
 def _verify_detection_hardening_source_contract() -> None:
     correlation = (ROOT / "src" / "quietward" / "correlation.py").read_text(encoding="utf-8")
     scoring = (ROOT / "src" / "quietward" / "scoring.py").read_text(encoding="utf-8")
+    service = (ROOT / "src" / "quietward" / "service.py").read_text(encoding="utf-8")
     debian = (ROOT / "src" / "quietward" / "collectors" / "debian.py").read_text(encoding="utf-8")
     parsers = (ROOT / "src" / "quietward" / "collectors" / "parsers.py").read_text(encoding="utf-8")
+    windows_collector = (ROOT / "src" / "quietward" / "collectors" / "windows.py").read_text(encoding="utf-8")
     windows = (ROOT / "src" / "quietward" / "collectors" / "windows_parsers.py").read_text(encoding="utf-8")
 
     required = {
@@ -97,25 +101,44 @@ def _verify_detection_hardening_source_contract() -> None:
             '"reverse_shell"',
             '"credential_dumping"',
         ),
+        "service.py": (
+            "_SUPPRESSION_BYPASS_MARKERS",
+            "_bypasses_suppression",
+            '"reverse_shell"',
+            '"credential_spray"',
+        ),
         "collectors/debian.py": (
             '"credential_spray"',
             '"source_failed_count"',
             '"raw_source_address_persisted": False',
             '"raw_username_persisted": False',
+            '"address_identity": "installation_keyed_hmac_sha256"',
+            "privacy identity unavailable; connections not persisted",
         ),
         "collectors/parsers.py": (
             '"web_server_spawned_suspicious_shell"',
             "_LINUX_WEB_PARENT_NAMES",
             "_PARENT_CHILD_SUSPICIOUS_MARKERS",
             "_linux_parent_child_markers",
+            '"linux-outbound-address-v1"',
+            '"linux-auth-source-v1"',
+        ),
+        "collectors/windows.py": (
+            "self.config.include_connections",
+            "parse_windows_connections(",
+            "parse_windows_persistence(",
         ),
         "collectors/windows_parsers.py": (
+            "import re",
             '"reverse_shell"',
             '"credential_dumping"',
             '"document_spawned_interpreter"',
             '"ransomware_recovery_inhibition"',
             '"event_log_clearing"',
             '"defender_tamper_command"',
+            '"windows-outbound-address-v1"',
+            '"windows-auth-source-v1"',
+            '"windows-persistence-record-v1"',
             r"vssadmin(?:\.exe)?\s+delete\s+shadows",
             r"wevtutil(?:\.exe)?\s+cl",
             "_DOCUMENT_PARENTS",
@@ -125,8 +148,10 @@ def _verify_detection_hardening_source_contract() -> None:
     texts = {
         "correlation.py": correlation,
         "scoring.py": scoring,
+        "service.py": service,
         "collectors/debian.py": debian,
         "collectors/parsers.py": parsers,
+        "collectors/windows.py": windows_collector,
         "collectors/windows_parsers.py": windows,
     }
     missing: list[str] = []
@@ -136,6 +161,13 @@ def _verify_detection_hardening_source_contract() -> None:
                 missing.append(f"{label}: {fragment}")
     if missing:
         raise RuntimeError("v0.5 detection hardening source contract missing:\n" + "\n".join(missing))
+
+    for relative in (
+        "tests/test_address_privacy_v05.py",
+        "tests/test_suppression_high_signal_v05.py",
+    ):
+        if not (ROOT / relative).is_file():
+            raise RuntimeError(f"v0.5 release correction test missing: {relative}")
 
 
 def main() -> int:
@@ -155,6 +187,9 @@ def main() -> int:
     print("cross-subject attack-chain correlation=PASS")
     print("process-network corroboration=PASS")
     print("credential-spray source/account aggregation=PASS")
+    print("installation-keyed address privacy=PASS")
+    print("high-signal suppression bypass=PASS")
+    print("Windows collector/parser contract=PASS")
     print("high-confidence behavior priority floors=PASS")
     print("Windows reverse-shell/credential-dumping markers=PASS")
     print("Windows document-to-interpreter parent-child detection=PASS")
