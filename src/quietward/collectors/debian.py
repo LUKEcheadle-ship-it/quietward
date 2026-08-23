@@ -52,7 +52,11 @@ class DebianReadOnlyCollector:
             namespace=self.config.data_identity_namespace
         )
         self.privacy_identity: PrivacyIdentity | None = None
-        if (self.config.include_auth_journal or self.config.include_processes) and self.config.privacy_identity_key_path is not None:
+        if (
+            self.config.include_auth_journal
+            or self.config.include_processes
+            or self.config.include_connections
+        ) and self.config.privacy_identity_key_path is not None:
             try:
                 self.privacy_identity = PrivacyIdentity.load(
                     self.config.privacy_identity_key_path,
@@ -95,10 +99,16 @@ class DebianReadOnlyCollector:
         if self.config.include_connections:
             result = self.runner.run(CONNECTIONS_COMMAND)
             if self._ok(result, "outbound connection inventory", errors):
-                connections = parse_connections_output(
-                    result.stdout,
-                    namespace=self.config.data_identity_namespace,
-                )[:MAX_CONNECTION_RECORDS]
+                if self.privacy_identity is None:
+                    errors.append(
+                        "outbound connection privacy identity unavailable; connections not persisted"
+                    )
+                else:
+                    connections = parse_connections_output(
+                        result.stdout,
+                        self.privacy_identity,
+                        MAX_CONNECTION_RECORDS,
+                    )
 
         if self.config.include_docker:
             result = self.runner.run(DOCKER_PS_COMMAND)
@@ -154,7 +164,7 @@ class DebianReadOnlyCollector:
                         self._auth_events(
                             parse_auth_journal(
                                 result.stdout,
-                                namespace=self.config.data_identity_namespace,
+                                privacy_identity=self.privacy_identity,
                             ),
                             observed_at,
                         )
@@ -235,6 +245,7 @@ class DebianReadOnlyCollector:
                         "raw_source_address_persisted": False,
                         "raw_username_persisted": False,
                         "raw_log_message_persisted": False,
+                        "address_identity": "installation_keyed_hmac_sha256",
                     },
                     confidence=(
                         0.98
