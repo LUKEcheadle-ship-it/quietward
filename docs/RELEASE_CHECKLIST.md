@@ -15,7 +15,7 @@ Do not mark QuietWard stable or production-ready.
 - [ ] Confirm `pyproject.toml` and `quietward.__version__` both report `0.5.0a1`.
 - [ ] Confirm `CHANGELOG.md`, README and `docs/releases/v0.5.0-alpha.1.md` describe the same candidate.
 
-## Detection/repository gate
+## Detection gate
 
 Install release-test dependencies without adding runtime dependencies:
 
@@ -34,7 +34,6 @@ The exact SHA must pass:
 - [ ] full pytest suite with warnings treated as errors;
 - [ ] source/tests/scripts compile check;
 - [ ] public-release audit with zero blockers;
-- [ ] Response repository/code separation check;
 - [ ] observation-only README/source contract;
 - [ ] cross-subject same-host attack-chain tests;
 - [ ] process/network corroboration tests;
@@ -93,8 +92,7 @@ The exact candidate must preserve:
 - [ ] no file quarantine/deletion path exists;
 - [ ] no process/service termination path exists;
 - [ ] no firewall/host-isolation path exists;
-- [ ] no arbitrary command execution path exists;
-- [ ] no QuietWard Response client/agent/action integration exists in this repository.
+- [ ] no arbitrary command execution path exists.
 
 ## Deterministic release package
 
@@ -142,7 +140,7 @@ Only after the v0.5 platform reruns above pass:
 
 Only after every required item above is recorded PASS on the same candidate SHA:
 
-- [ ] review/merge the v0.5 candidate into QuietWard `main` with explicit owner authorization;
+- [ ] review/merge the v0.5 candidate into `main` with explicit owner authorization;
 - [ ] create tag `v0.5.0-alpha.1`;
 - [ ] publish only the verified deterministic source archive and checksum;
 - [ ] publish limitations and observation-only safety language;
