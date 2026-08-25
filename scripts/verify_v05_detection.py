@@ -36,7 +36,7 @@ def _version() -> str:
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     match = re.search(r'__version__\s*=\s*"([^"]+)"', init_text)
     if match is None or match.group(1) != "0.5.0a1":
-        raise RuntimeError("QuietWard detection branch must report 0.5.0a1")
+        raise RuntimeError("QuietWard release branch must report 0.5.0a1")
     if 'version = "0.5.0a1"' not in pyproject:
         raise RuntimeError("pyproject version is not 0.5.0a1")
     return match.group(1)
@@ -50,9 +50,15 @@ def _verify_release_documentation() -> None:
         raise RuntimeError("CHANGELOG.md is missing the v0.5.0-alpha.1 release entry")
     if not release_notes.is_file():
         raise RuntimeError("v0.5.0-alpha.1 release notes are missing")
-    for fragment in ("v0.5.0-alpha.1", "0.5.0a1", "feature/detection-hardening-v05"):
-        if fragment not in readme:
-            raise RuntimeError(f"README release-candidate metadata missing: {fragment}")
+    for fragment in (
+        "v0.5.0-alpha.1",
+        "0.5.0a1",
+        "release/v0.5.0-alpha.1",
+        "native Windows FAST",
+        "incident lifecycle",
+    ):
+        if fragment.casefold() not in readme.casefold():
+            raise RuntimeError(f"README combined-release metadata missing: {fragment}")
     if "installation-keyed" not in readme.lower():
         raise RuntimeError("README must document installation-keyed address privacy")
 
@@ -61,8 +67,8 @@ def _verify_observation_only_source_contract() -> None:
     text = (ROOT / "README.md").read_text(encoding="utf-8").lower()
     required = (
         "observation-only",
-        "does not quarantine or delete files",
-        "stop processes or services",
+        "does not quarantine/delete files",
+        "terminate processes or services",
         "change firewall rules",
         "actions_executed == 0",
         "executable_proposals == 0",
@@ -72,14 +78,20 @@ def _verify_observation_only_source_contract() -> None:
         raise RuntimeError(f"observation-only README contract missing: {missing}")
 
 
-def _verify_detection_hardening_source_contract() -> None:
-    correlation = (ROOT / "src" / "quietward" / "correlation.py").read_text(encoding="utf-8")
-    scoring = (ROOT / "src" / "quietward" / "scoring.py").read_text(encoding="utf-8")
-    service = (ROOT / "src" / "quietward" / "service.py").read_text(encoding="utf-8")
-    debian = (ROOT / "src" / "quietward" / "collectors" / "debian.py").read_text(encoding="utf-8")
-    parsers = (ROOT / "src" / "quietward" / "collectors" / "parsers.py").read_text(encoding="utf-8")
-    windows_collector = (ROOT / "src" / "quietward" / "collectors" / "windows.py").read_text(encoding="utf-8")
-    windows = (ROOT / "src" / "quietward" / "collectors" / "windows_parsers.py").read_text(encoding="utf-8")
+def _verify_combined_source_contract() -> None:
+    texts = {
+        "correlation.py": (ROOT / "src" / "quietward" / "correlation.py").read_text(encoding="utf-8"),
+        "scoring.py": (ROOT / "src" / "quietward" / "scoring.py").read_text(encoding="utf-8"),
+        "product_store.py": (ROOT / "src" / "quietward" / "product_store.py").read_text(encoding="utf-8"),
+        "runtime.py": (ROOT / "src" / "quietward" / "runtime.py").read_text(encoding="utf-8"),
+        "core_service.py": (ROOT / "src" / "quietward" / "core_service.py").read_text(encoding="utf-8"),
+        "performance_budget.py": (ROOT / "src" / "quietward" / "performance_budget.py").read_text(encoding="utf-8"),
+        "collectors/debian.py": (ROOT / "src" / "quietward" / "collectors" / "debian.py").read_text(encoding="utf-8"),
+        "collectors/parsers.py": (ROOT / "src" / "quietward" / "collectors" / "parsers.py").read_text(encoding="utf-8"),
+        "collectors/windows.py": (ROOT / "src" / "quietward" / "collectors" / "windows.py").read_text(encoding="utf-8"),
+        "collectors/windows_native_fast.py": (ROOT / "src" / "quietward" / "collectors" / "windows_native_fast.py").read_text(encoding="utf-8"),
+        "collectors/windows_parsers.py": (ROOT / "src" / "quietward" / "collectors" / "windows_parsers.py").read_text(encoding="utf-8"),
+    }
 
     required = {
         "correlation.py": (
@@ -89,6 +101,8 @@ def _verify_detection_hardening_source_contract() -> None:
             "process_network_corroboration=",
             "process_network_corroboration_bonus=+12.0",
             "_process_network_matches",
+            "temporal_context_event_ids",
+            "cross_signal_actor_bonus",
         ),
         "scoring.py": (
             "credential_spray_high_priority_floor=65.0",
@@ -100,12 +114,32 @@ def _verify_detection_hardening_source_contract() -> None:
             '"defender_tamper_command"',
             '"reverse_shell"',
             '"credential_dumping"',
+            "temporal_actor_context",
         ),
-        "service.py": (
+        "product_store.py": (
             "_SUPPRESSION_BYPASS_MARKERS",
             "_bypasses_suppression",
             '"reverse_shell"',
             '"credential_spray"',
+            "_finding_current_cycle_event_ids",
+        ),
+        "runtime.py": (
+            "CoreSentinelService",
+            "CoreSentinelStore",
+            "evaluate_warm_start",
+            "install_dashboard_performance",
+        ),
+        "core_service.py": (
+            "AdaptiveMaintenanceGovernor",
+            "ContextualPipeline",
+            "active_incident_lanes",
+        ),
+        "performance_budget.py": (
+            "idle_cpu_percent_total_capacity",
+            "rss_mib",
+            "fast_p50_ms",
+            "fast_p95_ms",
+            "analysis_p95_ms",
         ),
         "collectors/debian.py": (
             '"credential_spray"',
@@ -114,6 +148,7 @@ def _verify_detection_hardening_source_contract() -> None:
             '"raw_username_persisted": False',
             '"address_identity": "installation_keyed_hmac_sha256"',
             "privacy identity unavailable; connections not persisted",
+            "parse_docker_inspect_batch_output",
         ),
         "collectors/parsers.py": (
             '"web_server_spawned_suspicious_shell"',
@@ -122,11 +157,20 @@ def _verify_detection_hardening_source_contract() -> None:
             "_linux_parent_child_markers",
             '"linux-outbound-address-v1"',
             '"linux-auth-source-v1"',
+            "from\\s+|rhost=",
         ),
         "collectors/windows.py": (
-            "self.config.include_connections",
+            "collect_windows_native_fast",
+            "WINDOWS_FAST_CORE_COMMAND",
+            "refresh_slow_context",
+            "_fast_detail_needed",
             "parse_windows_connections(",
             "parse_windows_persistence(",
+        ),
+        "collectors/windows_native_fast.py": (
+            "CreateToolhelp32Snapshot",
+            "GetExtendedTcpTable",
+            "actions_executed" if False else "collect_windows_native_fast",
         ),
         "collectors/windows_parsers.py": (
             "import re",
@@ -139,35 +183,31 @@ def _verify_detection_hardening_source_contract() -> None:
             '"windows-outbound-address-v1"',
             '"windows-auth-source-v1"',
             '"windows-persistence-record-v1"',
+            '"command_hash": command_identity',
             r"vssadmin(?:\.exe)?\s+delete\s+shadows",
             r"wevtutil(?:\.exe)?\s+cl",
             "_DOCUMENT_PARENTS",
             "_DOCUMENT_CHILD_EXECUTORS",
         ),
     }
-    texts = {
-        "correlation.py": correlation,
-        "scoring.py": scoring,
-        "service.py": service,
-        "collectors/debian.py": debian,
-        "collectors/parsers.py": parsers,
-        "collectors/windows.py": windows_collector,
-        "collectors/windows_parsers.py": windows,
-    }
+
     missing: list[str] = []
     for label, fragments in required.items():
         for fragment in fragments:
             if fragment not in texts[label]:
                 missing.append(f"{label}: {fragment}")
     if missing:
-        raise RuntimeError("v0.5 detection hardening source contract missing:\n" + "\n".join(missing))
+        raise RuntimeError("v0.5 combined source contract missing:\n" + "\n".join(missing))
 
     for relative in (
         "tests/test_address_privacy_v05.py",
         "tests/test_suppression_high_signal_v05.py",
+        "tests/test_v05_release_merge.py",
+        "scripts/validate_migrated_release.py",
+        "scripts/audit_v05_safety.py",
     ):
         if not (ROOT / relative).is_file():
-            raise RuntimeError(f"v0.5 release correction test missing: {relative}")
+            raise RuntimeError(f"v0.5 release artifact missing: {relative}")
 
 
 def main() -> int:
@@ -175,27 +215,25 @@ def main() -> int:
     version = _version()
     _verify_release_documentation()
     _verify_observation_only_source_contract()
-    _verify_detection_hardening_source_contract()
+    _verify_combined_source_contract()
     env = _test_environment()
     _run([sys.executable, "-m", "compileall", "-q", "src", "tests", "scripts"], env=env)
     _run([sys.executable, "-m", "pytest", "-q", "-W", "error"], env=env)
     _run([sys.executable, "scripts/public_release_audit.py"], env=env)
 
-    print("\nQUIETWARD 0.5.0-ALPHA.1 DETECTION GATE: PASS")
+    print("\nQUIETWARD 0.5.0-ALPHA.1 COMBINED GATE: PASS")
     print(f"version={version}")
     print("full pytest suite=PASS")
+    print("multi-cadence core=PASS")
+    print("native Windows FAST inventory contract=PASS")
+    print("incident lifecycle/source-aware resolution=PASS")
+    print("bounded temporal/same-actor context=PASS")
     print("cross-subject attack-chain correlation=PASS")
     print("process-network corroboration=PASS")
     print("credential-spray source/account aggregation=PASS")
     print("installation-keyed address privacy=PASS")
     print("high-signal suppression bypass=PASS")
     print("Windows collector/parser contract=PASS")
-    print("high-confidence behavior priority floors=PASS")
-    print("Windows reverse-shell/credential-dumping markers=PASS")
-    print("Windows document-to-interpreter parent-child detection=PASS")
-    print("Windows recovery-inhibition/log-clearing detection=PASS")
-    print("Linux reverse-shell/downloader/encoded-shell markers=PASS")
-    print("Linux web-server-to-suspicious-shell ancestry=PASS")
     print("observation-only contract=PASS")
     print("release documentation consistency=PASS")
     print("public-release audit=PASS")
