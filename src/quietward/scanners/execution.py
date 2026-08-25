@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import os
-import shutil
-import stat
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -11,58 +9,81 @@ from typing import Callable, Sequence
 
 from ..config import ScannerJobSettings
 from ..contracts import SecurityEvent
+from ..windows_trust import (
+    WindowsTrustedPaths,
+    is_regular_non_reparse_file,
+    load_windows_trusted_paths,
+    trusted_executable,
+    trusted_windows_environment,
+)
 from .clamav import parse_clamav_output
 from .debsecan import parse_debsecan_simple
 from .trivy import parse_trivy_json
 from .yara import parse_yara_output
 
-
 _ALLOWED_BINARIES = {"clamscan", "yara", "trivy", "debsecan"}
 _ALLOWED_SCANNERS = {"clamav", "yara", "trivy", "debsecan"}
-_TRUSTED_POSIX_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+_POSIX_EXECUTABLE_ROOTS = (
+    Path("/usr/local/sbin"), Path("/usr/local/bin"), Path("/usr/sbin"),
+    Path("/usr/bin"), Path("/sbin"), Path("/bin"),
+)
 
 
 def _bounded_error(value: str, limit: int = 500) -> str:
     return " ".join(value.replace("\x00", "").split())[:limit]
 
 
-def _trusted_default_resolver(name: str) -> str | None:
-    if os.name == "nt":
-        resolved = shutil.which(name)
-        if not resolved:
-            return None
-        try:
-            path = Path(resolved).resolve(strict=True)
-        except OSError:
-            return None
-        trusted_roots = [
-            Path(os.environ.get("ProgramFiles") or r"C:\Program Files"),
-            Path(os.environ.get("ProgramFiles(x86)") or r"C:\Program Files (x86)"),
-            Path(os.environ.get("SystemRoot") or os.environ.get("WINDIR") or r"C:\Windows"),
-        ]
-        normalized = str(path).casefold()
-        if not any(
-            normalized == str(root).casefold()
-            or normalized.startswith(str(root).rstrip("\\/").casefold() + os.sep.casefold())
-            for root in trusted_roots
-        ):
-            return None
-        return str(path)
+def _regular_non_link_executable(path: Path) -> bool:
+    return is_regular_non_reparse_file(path, executable=True)
 
-    resolved = shutil.which(name, path=_TRUSTED_POSIX_PATH)
-    if not resolved:
+
+def _windows_scanner_candidates(binary: str, paths: WindowsTrustedPaths | None = None) -> tuple[Path, ...]:
+    trusted = paths if paths is not None else load_windows_trusted_paths()
+    if trusted is None:
+        return ()
+    roots = tuple(root for root in (trusted.program_files, trusted.program_files_x86) if root is not None)
+    mapping = {
+        "clamscan": tuple(root / "ClamAV" / "clamscan.exe" for root in roots),
+        "yara": tuple(candidate for root in roots for candidate in (root / "YARA" / "yara64.exe", root / "YARA" / "yara.exe")),
+        "trivy": tuple(root / "Trivy" / "trivy.exe" for root in roots),
+        "debsecan": (),
+    }
+    return mapping.get(binary.casefold(), ())
+
+
+def resolve_trusted_scanner(binary: str) -> str | None:
+    name = os.path.basename(binary).casefold()
+    if name not in _ALLOWED_BINARIES or name != binary.casefold():
         return None
-    try:
-        path = Path(resolved).resolve(strict=True)
-        info = path.stat()
-    except OSError:
-        return None
-    if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or stat.S_IMODE(info.st_mode) & 0o022:
-        return None
-    trusted_roots = tuple(Path(item).resolve() for item in _TRUSTED_POSIX_PATH.split(os.pathsep))
-    if not any(path.parent == root or root in path.parents for root in trusted_roots):
-        return None
-    return str(path)
+    if os.name == "nt":
+        paths = load_windows_trusted_paths()
+        if paths is None:
+            return None
+        return trusted_executable(_windows_scanner_candidates(name, paths), paths.executable_roots)
+    for candidate in tuple(root / name for root in _POSIX_EXECUTABLE_ROOTS):
+        if _regular_non_link_executable(candidate):
+            return str(candidate.resolve(strict=True))
+    return None
+
+
+def _trusted_environment(executable: Path) -> dict[str, str]:
+    if os.name == "nt":
+        paths = load_windows_trusted_paths()
+        if paths is None:
+            raise ValueError("trusted Windows directories are unavailable")
+        return trusted_windows_environment(executable, paths, deny_network_updates=True)
+    return {"PATH": os.pathsep.join(str(root) for root in _POSIX_EXECUTABLE_ROOTS), "HOME": os.environ.get("HOME", "/nonexistent"), "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8", "NO_PROXY": "*", "no_proxy": "*"}
+
+
+def _injected_environment(executable: Path) -> dict[str, str]:
+    if os.name != "nt":
+        return {"PATH": str(executable.parent), "HOME": os.environ.get("HOME", "/nonexistent"), "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8", "NO_PROXY": "*", "no_proxy": "*"}
+    env: dict[str, str] = {"PATH": str(executable.parent), "PATHEXT": ".COM;.EXE;.BAT;.CMD", "NO_PROXY": "*", "no_proxy": "*"}
+    for key in ("SYSTEMROOT","WINDIR","TEMP","TMP","LOCALAPPDATA","APPDATA","PROGRAMDATA","USERPROFILE","HOMEDRIVE","HOMEPATH"):
+        value = os.environ.get(key) or os.environ.get(key.title())
+        if value:
+            env[key] = value
+    return env
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,19 +121,20 @@ class ScannerExecutionResult:
 
 
 class ScannerExecutor:
-    """Runs bounded, explicitly configured local scans without updates, shell, sudo, or containment."""
+    """Runs bounded local scans without updates, shell, sudo, or containment."""
 
     def __init__(
         self,
         host_id: str,
         *,
-        executable_resolver: Callable[[str], str | None] | None = None,
+        executable_resolver: Callable[[str], str | None] = resolve_trusted_scanner,
         run_process: Callable[..., subprocess.CompletedProcess[bytes]] = subprocess.run,
     ) -> None:
         if not host_id.strip():
             raise ValueError("host_id must not be empty")
         self.host_id = host_id
-        self.executable_resolver = executable_resolver or _trusted_default_resolver
+        self.executable_resolver = executable_resolver
+        self._production_resolver = executable_resolver is resolve_trusted_scanner
         self.run_process = run_process
 
     def build_commands(self, job: ScannerJobSettings) -> list[tuple[tuple[str, ...], str | None]]:
@@ -134,7 +156,7 @@ class ScannerExecutor:
         for target in job.targets:
             normalized_target = self._validate_path(target, "target")
             if job.scanner == "clamav":
-                database = (("--database=" + self._validate_path(job.data_source, "data_source")),) if job.data_source else ()
+                database = (("--database=" + self._validate_path(job.data_source, "data_source"),) if job.data_source else ())
                 argv = ("clamscan", "--recursive", "--infected", "--no-summary", "--cross-fs=no", "--max-filesize=100M", "--max-scansize=250M", *database, normalized_target)
             elif job.scanner == "yara":
                 if job.rules_path is None:
@@ -158,32 +180,35 @@ class ScannerExecutor:
             raise ValueError("scanner binary is not allowed")
         resolved = self.executable_resolver(binary)
         if not resolved:
-            return ScannerExecutionResult(job.scanner, target, started, datetime.now(timezone.utc), "unavailable", 127, (), f"trusted {binary} is not installed")
-        command = (resolved, *tuple(str(item) for item in argv[1:]))
+            return ScannerExecutionResult(job.scanner, target, started, datetime.now(timezone.utc), "unavailable", 127, (), f"trusted {binary} executable is not installed")
+        resolved_path = Path(resolved)
+        if not resolved_path.is_absolute() or not _regular_non_link_executable(resolved_path):
+            raise ValueError("scanner executable must be a trusted regular absolute file")
+        command = (str(resolved_path), *tuple(str(item) for item in argv[1:]))
         if any(os.path.basename(item).casefold() in {"sudo", "su", "sh", "bash", "freshclam"} for item in command):
             raise ValueError("shell, privilege escalation, and updater commands are forbidden")
-        env = {
-            "PATH": _TRUSTED_POSIX_PATH if os.name != "nt" else str(Path(resolved).parent),
-            "HOME": os.environ.get("HOME", "/nonexistent"),
-            "LANG": "C.UTF-8",
-            "LC_ALL": "C.UTF-8",
-            "NO_PROXY": "*",
-            "no_proxy": "*",
-        }
+        env = _trusted_environment(resolved_path) if self._production_resolver else _injected_environment(resolved_path)
         try:
-            process = self.run_process(command, shell=False, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=job.timeout_seconds, check=False, env=env)
+            process = self.run_process(command, shell=False, cwd=str(resolved_path.parent), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=job.timeout_seconds, check=False, env=env)
             raw_stdout = bytes(process.stdout or b"")
             raw_stderr = bytes(process.stderr or b"")
             truncated = len(raw_stdout) > job.max_output_bytes or len(raw_stderr) > job.max_output_bytes
-            stdout = raw_stdout[:job.max_output_bytes].decode("utf-8", errors="replace")
-            stderr = raw_stderr[:job.max_output_bytes].decode("utf-8", errors="replace")
-            events = tuple(self._parse(job, stdout, target, started, int(process.returncode)))
-            acceptable = self._acceptable_returncode(job.scanner, int(process.returncode))
-            return ScannerExecutionResult(job.scanner, target, started, datetime.now(timezone.utc), "ok" if acceptable else "error", int(process.returncode), events, error=None if acceptable else _bounded_error(stderr or f"scanner exited {process.returncode}"), output_truncated=truncated, command_binary=resolved)
+            stdout = raw_stdout[: job.max_output_bytes].decode("utf-8", errors="replace")
+            stderr = raw_stderr[: job.max_output_bytes].decode("utf-8", errors="replace")
+            returncode = int(process.returncode)
+            if truncated:
+                return ScannerExecutionResult(job.scanner, target, started, datetime.now(timezone.utc), "error", returncode, (), error="scanner output exceeded the configured safety limit", output_truncated=True, command_binary=str(resolved_path))
+            if not self._acceptable_returncode(job.scanner, returncode):
+                return ScannerExecutionResult(job.scanner, target, started, datetime.now(timezone.utc), "error", returncode, (), error=_bounded_error(stderr or f"scanner exited {returncode}"), command_binary=str(resolved_path))
+            try:
+                events = tuple(self._parse(job, stdout, target, started, returncode))
+            except (ValueError, TypeError, KeyError, IndexError):
+                return ScannerExecutionResult(job.scanner, target, started, datetime.now(timezone.utc), "error", returncode, (), error="scanner returned invalid or incomplete output", command_binary=str(resolved_path))
+            return ScannerExecutionResult(job.scanner, target, started, datetime.now(timezone.utc), "ok", returncode, events, command_binary=str(resolved_path))
         except subprocess.TimeoutExpired as exc:
-            return ScannerExecutionResult(job.scanner, target, started, datetime.now(timezone.utc), "timeout", 124, (), error=_bounded_error(str(exc)), timed_out=True, command_binary=resolved)
+            return ScannerExecutionResult(job.scanner, target, started, datetime.now(timezone.utc), "timeout", 124, (), error=_bounded_error(str(exc)), timed_out=True, command_binary=str(resolved_path))
         except OSError as exc:
-            return ScannerExecutionResult(job.scanner, target, started, datetime.now(timezone.utc), "error", None, (), error=_bounded_error(str(exc)), command_binary=resolved)
+            return ScannerExecutionResult(job.scanner, target, started, datetime.now(timezone.utc), "error", None, (), error=_bounded_error(str(exc)), command_binary=str(resolved_path))
 
     def _parse(self, job: ScannerJobSettings, stdout: str, target: str | None, observed_at: datetime, returncode: int) -> list[SecurityEvent]:
         if job.scanner == "clamav":
