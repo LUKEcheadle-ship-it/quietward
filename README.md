@@ -4,32 +4,62 @@ QuietWard is an offline-first, observation-only cybersecurity monitor that expla
 
 ## Release status
 
-`v0.5.0-alpha.1` is the current **detection-hardening candidate** on `feature/detection-hardening-v05`. It is not a published release until the dedicated v0.5 gate and platform qualification pass on the exact candidate SHA.
+`v0.5.0-alpha.1` is the current **experimental alpha release candidate** on `release/v0.5.0-alpha.1`. It is the project's largest architecture, performance, privacy, incident-lifecycle, and detection update so far.
 
-The last qualified platform targets remain:
+The release candidate must complete exact-public-SHA platform/release qualification before tag/publication.
+
+Intended qualified platforms:
 
 - **Windows 11**
 - **Debian 12**
 
-Windows 10, macOS, and other Linux distributions have not completed independent qualification and are not listed as supported. QuietWard is not a replacement for Microsoft Defender or professional endpoint protection.
+Windows 10, macOS, and other Linux distributions have not completed independent v0.5 qualification. QuietWard is not a replacement for Microsoft Defender, enterprise EDR/MDR, or professional incident response.
 
 ## What it does
 
-QuietWard monitors processes, listening ports, persistence, selected sensitive files, local security evidence, containers when available, and its own integrity. It correlates changes into findings, stores bounded local evidence, and presents the result in a read-only localhost dashboard.
+QuietWard monitors processes, listening ports, persistence, selected sensitive files, authentication evidence, containers when available, Microsoft Defender context on Windows, and its own integrity. It correlates normalized changes into findings, tracks incident lifecycle over time, stores bounded local signed evidence, and presents the result in a read-only local dashboard.
 
-The v0.5 detection candidate strengthens that observation layer without adding remediation code:
+## What v0.5 adds
 
-- bounded same-host cross-subject attack-chain correlation across authentication, privilege, execution, persistence, network, malware and integrity phases;
-- credential-spray recognition across one pseudonymous source and multiple installation-scoped account identities without persisting raw usernames or source IPs;
-- installation-keyed HMAC-SHA256 pseudonyms for authentication source addresses and optional outbound destinations, preventing raw-IP persistence and cross-installation linkability;
-- stronger deterministic scoring for explicit high-confidence behaviors such as reverse shells, credential dumping, process injection, dangerous container configurations and corroborated credential spray;
-- high-confidence behavior such as reverse shells, credential dumping, credential spray and explicit integrity failures bypasses ordinary subject suppression so an old expected/suppressed finding cannot hide a newly dangerous event;
-- Windows document/PDF processes spawning high-risk interpreters/LOLBins as a high-signal parent→child behavior;
-- expanded Linux/Windows behavioral markers while raw command lines remain hashed/redacted according to the existing privacy model.
+- **Lower-overhead monitoring:** FAST, STANDARD, DEEP, and MAINTENANCE observation cadences stagger expensive work and keep the normal quiet path lightweight.
+- **Native Windows FAST path:** read-only Windows APIs provide fresh process/PID and listener inventory without launching PowerShell on normal quiet FAST cycles; the fixed allowlisted PowerShell path remains a fail-closed fallback/deeper-context path.
+- **Stable incident lifecycle:** findings are tracked as `new`, `recurring`, `changed`, and `resolved`, with source-aware resolution so skipped/not-due domains cannot create false absence.
+- **Cross-signal context:** bounded same-actor and multi-cycle context strengthens related evidence while guarding against PID reuse and generic-runtime over-correlation.
+- **Multi-stage detection:** bounded same-host cross-subject attack-chain correlation and process/network corroboration add context without authorizing host actions.
+- **Stronger deterministic behavior signals:** credential spray/dumping, reverse-shell behavior, process injection markers, Office/PDF-to-risky-interpreter ancestry, Linux web/server-to-suspicious-shell ancestry, ransomware recovery inhibition, event-log clearing, and dangerous container configurations.
+- **Stronger privacy:** authentication source addresses and optional outbound destinations use installation-keyed HMAC-SHA256 pseudonyms; corrected identity-bearing paths fail closed if the privacy key is unavailable.
+- **Safer suppression:** ordinary expected/suppressed noise remains reviewable, while explicit high-signal behavior bypasses ordinary suppression and contextual suppression fails closed when source-cycle evidence is unavailable.
+- **Lower-write persistence:** quiet healthy cycles reduce redundant writes inside bounded durability windows while security-bearing/degraded cycles remain immediately durable.
+- **Evidence efficiency:** incremental evidence verification is used between mandatory full retained-chain audits, with authoritative full fallback on mismatch.
+- **Verified warm restart:** recent established healthy signed state can stage heavier revalidation while FAST observation resumes immediately; unsafe/stale state cold-starts instead.
+- **Performance visibility:** CPU, RSS, phase latency, command count/time, persistence mode, and health-write mode are exposed to the local health/dashboard surfaces.
+- **Improved dashboard/supportability:** active incidents, lifecycle, monitoring coverage, evidence integrity, retention pressure, Defender/collector context, and explicit zero-action state are visible locally.
+- **Redacted incident export v2** and deterministic offline SPDX SBOM tooling.
 
-On Windows, QuietWard also displays read-only Microsoft Defender status. Defender evidence is labeled separately and QuietWard does not start scans or change Defender settings.
+See `docs/releases/v0.5.0-alpha.1.md`, `docs/V05_REVIEW_GUIDE.md`, and `docs/V05_MARKETING_KIT.md`.
 
-![QuietWard read-only dashboard on Windows](docs/assets/quietward-windows-dashboard.png)
+## Safety boundary
+
+QuietWard remains observation-only. It does not automatically quarantine or delete files, terminate processes or services, change firewall rules, isolate a host, execute arbitrary commands, upload telemetry, or perform automatic remediation.
+
+QuietWard does not quarantine/delete files. This explicit release-contract wording is retained for automated safety verification.
+
+Release invariants:
+
+```text
+actions_executed == 0
+executable_proposals == 0
+cloud_upload == false
+public_listener == false
+```
+
+The dashboard remains read-only and loopback-only by default. Models may explain or reprioritize bounded evidence but cannot authorize an action.
+
+## Privacy
+
+Corrected v0.5 identity-bearing authentication and optional outbound network paths use installation-keyed HMAC-SHA256 pseudonyms. Raw authentication usernames and source/destination IP addresses are not persisted on these paths. Raw process command lines and full scanner output are not retained as durable finding evidence.
+
+See `docs/PRIVACY.md`.
 
 ## Windows quick start
 
@@ -39,110 +69,46 @@ Requirements:
 - Python 3.11 or newer
 - PowerShell
 
-Extract the release archive, open PowerShell in the extracted folder, and run:
+After release approval, extract the verified source archive and run:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\install_windows.ps1
 ```
 
-The installer is user-scoped and creates:
-
-- a private local virtual environment;
-- private configuration, state, privacy-identity and evidence-signing keys;
-- one limited current-user startup task;
-- a desktop shortcut to the dashboard.
-
 Open the dashboard at `http://127.0.0.1:8765/` or run:
 
 ```powershell
+quietward status --pretty
 quietward open-dashboard --pretty
 quietward diagnose --pretty
 ```
-
-Run the bounded host check with:
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\qualify_windows.ps1
-```
-
-See `docs/FIRST_RUN.md` and `docs/WINDOWS.md` for operating and troubleshooting guidance.
 
 ## Debian quick start
 
 ```bash
 ./scripts/install_user_service.sh
-quietward doctor --config ~/.config/quietward/config.json --pretty
+quietward status --config ~/.config/quietward/config.json --pretty
 ```
 
-The Debian path remains observation-only.
+## Release validation
 
-## What users see
-
-The local dashboard answers five practical questions:
-
-1. Is QuietWard running normally?
-2. When did monitoring last complete?
-3. Which findings need attention?
-4. Why was each finding raised?
-5. Are there collector, database, privacy, or evidence-integrity problems?
-
-Findings are grouped by semantic family so repeated hash-specific observations do not overwhelm the page. Each accessible disclosure preserves every original finding and incident link. Groups show their raw child count, highest severity, newest observation, review-state summary, and explanation. Filters retain only matching children, while the count line distinguishes groups, matching raw findings, displayed raw findings, and the database total.
-
-Finding details include severity, score, allowlisted plain-language reason explanations, escaped raw technical details, supporting evidence, review state, and any non-executable remediation proposal. Exact UTC timestamps remain available in tooltips and accessible labels. Optional collector limitations are shown as warnings rather than being presented as confirmed threats.
-
-## Safety boundary
-
-QuietWard does not quarantine or delete files, stop processes or services, change firewall rules, isolate a host, install packages during monitoring, upload telemetry, expose a public listener, execute arbitrary commands, or perform automatic remediation.
-
-QuietWard does not quarantine/delete files. This explicit release-contract wording is retained for automated safety verification.
-
-Release invariants:
-
-```text
-actions_executed == 0
-executable_proposals == 0
-dashboard_bind == 127.0.0.1
-cloud_upload == false
-public_listener == false
-```
-
-Outbound connection monitoring is disabled by default. When enabled, destination addresses are represented with the installation-keyed privacy identity rather than a public deterministic IP digest. Enable the collector only when you are ready to establish and review a real-host baseline.
-
-## Verify the v0.5 detection candidate
-
-Release qualification uses pytest without making it a runtime dependency. From a release checkout, install the release-test extra:
+From the exact release checkout, run the complete migrated/public release gate:
 
 ```bash
-python -m pip install -e ".[release]"
+python scripts/validate_migrated_release.py --pretty
 ```
 
-Then run the dedicated detection gate:
+The gate runs the complete repository test suite, Python compilation, static observation-only safety audit, strict public-release audit, deterministic double release-bundle build, and independent archive verification.
+
+The dedicated v0.5 detection gate remains available as an additional focused check:
 
 ```bash
 python scripts/verify_v05_detection.py
 ```
 
-The gate checks the exact `0.5.0a1` version, compiles source/tests/scripts, runs the full pytest suite with warnings treated as errors, runs the public-release audit, verifies the observation-only safety invariants, verifies installation-keyed address privacy and high-signal suppression bypass, validates the Windows parser/collector contracts, and verifies v0.5 release metadata.
+The Windows release builder does **not** permit a skip-tests release candidate. It freezes the current HEAD, validates the release, performs deterministic double builds, verifies the final archive, and emits a SHA-256 checksum sidecar.
 
-Platform-specific Windows 11 and Debian 12 qualification remains required on the exact candidate SHA before publication.
-
-## Build and verify a release candidate
-
-On Windows:
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_release_candidate.ps1
-```
-
-The Windows builder invokes the exact v0.5 gate unless `-SkipTests` is explicitly supplied, then performs two deterministic builds, compares archive SHA-256 values, and verifies the final archive/manifest. A release must never be published from a `-SkipTests` build.
-
-Linux validation:
-
-```bash
-./scripts/validate_release.sh
-```
-
-The Linux path also runs the exact v0.5 gate, builds twice, compares hashes, and runs `scripts/verify_release_bundle.py`.
+Native Windows 11 and Debian 12 qualification must still pass on the exact public release SHA before the tag is published.
 
 ## Export a redacted incident
 
@@ -151,7 +117,7 @@ quietward export FINDING_ID incident.json --format json --pretty
 quietward export FINDING_ID incident.md --format markdown
 ```
 
-Exports remain local and exclude raw sensitive identities and analyst notes.
+Exports remain local and exclude analyst notes and raw sensitive identities according to the redaction contract.
 
 ## Documentation
 
@@ -174,4 +140,4 @@ MIT. See `LICENSE`.
 
 ## Repository policy
 
-Never commit malware samples, private host logs, credentials, runtime databases, scanner databases, private network inventories, raw persistence files, signing keys, or production model inputs.
+Never commit malware samples, private host logs, credentials, runtime databases, scanner databases, private network inventories, raw persistence files, signing keys or production model inputs. Public issues must not contain private logs, keys, database files, or personal information.
