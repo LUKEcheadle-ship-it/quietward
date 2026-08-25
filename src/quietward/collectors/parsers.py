@@ -15,26 +15,15 @@ _VOLATILE_PREFIXES = ("/tmp/", "/var/tmp/", "/dev/shm/")
 _MINER_NAMES = {"xmrig", "minerd", "cpuminer", "ethminer"}
 _RELAY_NAMES = {"nc", "ncat", "netcat", "socat"}
 _LINUX_SHELL_NAMES = {"bash", "sh", "dash", "zsh", "ksh"}
-_LINUX_WEB_PARENT_NAMES = {
-    "apache2",
-    "httpd",
-    "nginx",
-    "lighttpd",
-    "gunicorn",
-    "uwsgi",
-}
-_PARENT_CHILD_SUSPICIOUS_MARKERS = {
-    "reverse_shell",
-    "download_execute_chain",
-    "encoded_shell_chain",
-}
+_LINUX_WEB_PARENT_NAMES = {"apache2", "httpd", "nginx", "lighttpd", "gunicorn", "uwsgi"}
+_PARENT_CHILD_SUSPICIOUS_MARKERS = {"reverse_shell", "download_execute_chain", "encoded_shell_chain"}
 _AUTH_PATTERNS = (
     re.compile(r"failed password", re.I),
     re.compile(r"authentication failure", re.I),
     re.compile(r"invalid user", re.I),
     re.compile(r"maximum authentication attempts", re.I),
 )
-_IP_PATTERN = re.compile(r"\b(?:from|rhost=)(?P<ip>[0-9a-fA-F:.]+)")
+_IP_PATTERN = re.compile(r"\b(?:from\s+|rhost=)(?P<ip>[0-9a-fA-F:.]+)")
 _USER_PATTERNS = (
     re.compile(r"invalid user\s+(?P<user>[A-Za-z0-9_.@-]+)", re.I),
     re.compile(r"for\s+(?P<user>[A-Za-z0-9_.@-]+)", re.I),
@@ -57,10 +46,7 @@ def _markers(command_name: str, executable: str, args: str) -> tuple[str, ...]:
         markers.add("cryptominer_indicator")
     if name in _RELAY_NAMES and re.search(r"(?:^|\s)-[^\s]*l", lowered):
         markers.add("network_listener_tool")
-    if name in _RELAY_NAMES and (
-        re.search(r"(?:^|\s)-[^\s]*e(?:\s|$)", lowered)
-        or "exec:" in lowered
-    ):
+    if name in _RELAY_NAMES and (re.search(r"(?:^|\s)-[^\s]*e(?:\s|$)", lowered) or "exec:" in lowered):
         markers.add("reverse_shell")
     if name in _LINUX_SHELL_NAMES and "/dev/tcp/" in lowered:
         markers.add("reverse_shell")
@@ -81,24 +67,9 @@ def _linux_parent_child_markers(records: list[ProcessRecord]) -> tuple[ProcessRe
             parent_name = parent.command_name.lower()
             child_name = record.command_name.lower()
             web_parent = parent_name in _LINUX_WEB_PARENT_NAMES or parent_name.startswith("php-fpm")
-            if (
-                web_parent
-                and child_name in _LINUX_SHELL_NAMES
-                and markers & _PARENT_CHILD_SUSPICIOUS_MARKERS
-            ):
+            if web_parent and child_name in _LINUX_SHELL_NAMES and markers & _PARENT_CHILD_SUSPICIOUS_MARKERS:
                 markers.add("web_server_spawned_suspicious_shell")
-        enriched.append(
-            ProcessRecord(
-                record.pid,
-                record.ppid,
-                record.user,
-                record.command_name,
-                record.executable,
-                record.args_hash,
-                tuple(sorted(markers)),
-                record.privileged_context,
-            )
-        )
+        enriched.append(ProcessRecord(record.pid, record.ppid, record.user, record.command_name, record.executable, record.args_hash, tuple(sorted(markers)), record.privileged_context))
     return tuple(enriched)
 
 
@@ -117,17 +88,7 @@ def parse_ps_output(text: str) -> tuple[ProcessRecord, ...]:
             continue
         first = args.split(None, 1)[0] if args.strip() else command_name
         executable = first if first.startswith("/") else command_name
-        records.append(
-            ProcessRecord(
-                pid,
-                ppid,
-                user,
-                command_name,
-                executable,
-                _args_hash(args),
-                _markers(command_name, executable, args),
-            )
-        )
+        records.append(ProcessRecord(pid, ppid, user, command_name, executable, _args_hash(args), _markers(command_name, executable, args)))
     return _linux_parent_child_markers(records)
 
 
@@ -185,11 +146,7 @@ def _destination_scope(host: str) -> str:
     return "reserved"
 
 
-def parse_connections_output(
-    text: str,
-    privacy_identity: PrivacyIdentity | None,
-    max_records: int = 2000,
-) -> tuple[ConnectionRecord, ...]:
+def parse_connections_output(text: str, privacy_identity: PrivacyIdentity | None, max_records: int = 2000) -> tuple[ConnectionRecord, ...]:
     if privacy_identity is None:
         return ()
     limit = max(1, int(max_records))
@@ -208,16 +165,7 @@ def parse_connections_output(
         if host in {"*", "0.0.0.0", "::"}:
             continue
         process_name = _process_name(parts[6]) if len(parts) == 7 else None
-        item = ConnectionRecord(
-            protocol=parts[0].lower(),
-            remote_address_hash=privacy_identity.identify_scoped(
-                host,
-                "linux-outbound-address-v1",
-            ),
-            remote_port=port,
-            destination_scope=_destination_scope(host),
-            process_name=process_name,
-        )
+        item = ConnectionRecord(parts[0].lower(), privacy_identity.identify_scoped(host, "linux-outbound-address-v1"), port, _destination_scope(host), process_name)
         if item.identity not in seen:
             seen.add(item.identity)
             records.append(item)
@@ -238,11 +186,7 @@ def parse_docker_ps_ids(text: str) -> tuple[str, ...]:
     return tuple(ids)
 
 
-def parse_docker_ps_output(
-    text: str,
-    *,
-    namespace: str = "quietward-v1",
-) -> tuple[ContainerRecord, ...]:
+def parse_docker_ps_output(text: str, *, namespace: str = "quietward-v1") -> tuple[ContainerRecord, ...]:
     records = []
     for line in text.splitlines():
         if not line.strip():
@@ -311,40 +255,24 @@ def parse_docker_inspect_output(text: str, base: ContainerRecord) -> ContainerRe
     markers: set[str] = set()
     if privileged:
         markers.add("privileged_container")
-    if network == "host":
-        markers.add("host_network")
-    if pid_mode == "host":
-        markers.add("host_pid")
-    if ipc_mode == "host":
-        markers.add("host_ipc")
-    if "docker_socket" in mounts:
-        markers.add("docker_socket_mount")
-    if "host_root" in mounts:
-        markers.add("host_root_mount")
-    if mounts & {"etc", "proc", "sys", "dev", "var_run"}:
-        markers.add("sensitive_host_mount")
-    if set(capabilities) & _SENSITIVE_CAPS:
-        markers.add("sensitive_capability")
-    if not no_new_privileges:
-        markers.add("no_new_privileges_missing")
+    if network == "host": markers.add("host_network")
+    if pid_mode == "host": markers.add("host_pid")
+    if ipc_mode == "host": markers.add("host_ipc")
+    if "docker_socket" in mounts: markers.add("docker_socket_mount")
+    if "host_root" in mounts: markers.add("host_root_mount")
+    if mounts & {"etc", "proc", "sys", "dev", "var_run"}: markers.add("sensitive_host_mount")
+    if set(capabilities) & _SENSITIVE_CAPS: markers.add("sensitive_capability")
+    if not no_new_privileges: markers.add("no_new_privileges_missing")
     restart_count = int(raw.get("RestartCount") or 0)
-    health = None
-    if isinstance(state.get("Health"), dict):
-        health = str(state["Health"].get("Status") or "") or None
-    if restart_count >= 5:
-        markers.add("restart_loop")
-    if health == "unhealthy":
-        markers.add("unhealthy_container")
+    health = str(state["Health"].get("Status") or "") or None if isinstance(state.get("Health"), dict) else None
+    if restart_count >= 5: markers.add("restart_loop")
+    if health == "unhealthy": markers.add("unhealthy_container")
     subset = {"privileged": privileged, "network": network, "pid": pid_mode, "ipc": ipc_mode, "readonly": readonly, "no_new": no_new_privileges, "caps": capabilities, "mounts": sorted(mounts), "image": str(config.get("Image") or base.image)}
     fingerprint = hashlib.sha256(json.dumps(subset, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     return ContainerRecord(base.container_id_hash, base.image, base.name, base.status, privileged, network or None, pid_mode or None, ipc_mode or None, readonly, no_new_privileges, capabilities, tuple(sorted(mounts)), restart_count, health, tuple(sorted(markers)), fingerprint)
 
 
-def parse_auth_journal(
-    text: str,
-    *,
-    privacy_identity: PrivacyIdentity | None,
-) -> list[dict[str, object]]:
+def parse_auth_journal(text: str, *, privacy_identity: PrivacyIdentity | None) -> list[dict[str, object]]:
     matches = []
     for line in text.splitlines():
         try:
@@ -364,14 +292,7 @@ def parse_auth_journal(
         except (TypeError, ValueError, OSError):
             pass
         ip_match = _IP_PATTERN.search(message)
-        address_hash = (
-            privacy_identity.identify_scoped(
-                ip_match.group("ip"),
-                "linux-auth-source-v1",
-            )
-            if privacy_identity is not None and ip_match
-            else "unknown"
-        )
+        address_hash = privacy_identity.identify_scoped(ip_match.group("ip"), "linux-auth-source-v1") if privacy_identity is not None and ip_match else "unknown"
         user = "unknown"
         for pattern in _USER_PATTERNS:
             found = pattern.search(message)
