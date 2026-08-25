@@ -481,6 +481,10 @@ def parse_windows_persistence(
                     "source": "windows-read-only",
                     "state": state,
                     "name_identity_hash": name_identity,
+                    # Compatibility field retained for older lifecycle/dashboard
+                    # consumers. It is the same installation-keyed pseudonym and
+                    # never contains the raw command.
+                    "command_hash": command_identity,
                     "command_identity_hash": command_identity,
                     "account_identity_hash": account_identity,
                     "raw_name_persisted": False,
