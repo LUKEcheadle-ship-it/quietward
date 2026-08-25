@@ -11,7 +11,7 @@ from .alerts import LocalAlertSink
 from .collectors import CollectionBatch, CollectorSnapshot, DebianCollectorConfig, DebianReadOnlyCollector, build_collector
 from .config import load_config
 from .contracts import SecurityEvent
-from .dashboard import DashboardServer
+from .enhanced_dashboard import QuietWardDashboardServer as DashboardServer
 from .doctor import run_doctor
 from .models import LinearPriorityModel
 from .pipeline import SentinelPipeline
