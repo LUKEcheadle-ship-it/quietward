@@ -1,6 +1,6 @@
 # QuietWard v0.5.0-alpha.1 marketing kit
 
-Use this material only after the exact release candidate completes the required qualification gates. Keep **experimental alpha** language intact.
+Use this material only after the exact public release candidate completes all required qualification gates. Keep **experimental alpha** language intact.
 
 ## Positioning
 
@@ -14,112 +14,91 @@ Local security visibility without automatic remediation.
 
 **GitHub About description**
 
-Offline-first, observation-only host security monitoring with deterministic detection, installation-keyed privacy identities and a local read-only dashboard.
+Offline-first, observation-only host security monitoring with explainable detection, incident lifecycle tracking, installation-keyed privacy identities and a local read-only dashboard.
 
-## What makes QuietWard different
+## What is new in v0.5
 
-- **Observation-only by design:** no process killing, file quarantine, firewall changes or automatic remediation.
-- **Offline-first:** monitoring and evidence remain local.
-- **Explainable detections:** deterministic scoring and correlation provide reviewable reasons instead of opaque autonomous decisions.
-- **Installation-keyed privacy:** usernames, authentication source addresses and optional outbound destinations use private per-installation pseudonyms rather than globally reusable raw identifiers/public IP digests.
-- **Multi-stage correlation:** v0.5 can connect corroborated same-host attack phases across different subjects inside a bounded time window.
-- **Suppression safety:** explicit high-signal behaviors bypass ordinary expected/suppressed subject rules so an old baseline decision cannot hide a later reverse shell, credential attack or integrity failure.
-- **False-positive controls:** high-confidence behaviors have explicit negative regression cases.
+- **Smarter incident tracking:** findings can be tracked as new, recurring, changed or resolved rather than appearing as disconnected alerts.
+- **Cross-signal context:** related process, network and nearby-cycle evidence can strengthen one incident while bounded false-positive controls remain in place.
+- **Stronger behavior detection:** deterministic review prioritization recognizes credential spray/dumping, reverse-shell behavior, ransomware recovery inhibition, event-log clearing, risky process ancestry and dangerous container configurations.
+- **Better Windows visibility:** native read-only FAST process/listener inventory, stronger listener/process attribution and trusted executable resolution.
+- **Lower background overhead:** fast, standard, deep and maintenance checks run on different cadences; quiet cycles reduce unnecessary database/evidence writes; heavy work is staggered.
+- **Stronger privacy:** authentication source addresses and optional outbound destinations use private installation-keyed pseudonyms rather than raw addresses or globally reusable public hashes.
+- **Safer suppression:** routine noise can still be reviewed/suppressed, but later explicit high-signal behavior cannot be hidden by an old expected rule.
+- **Better evidence handling:** incremental verification between periodic full audits, signed local evidence and privacy-safe incident export v2.
+- **Improved dashboard:** active incidents, monitoring coverage, evidence integrity and retention state are easier to understand locally.
 
-## v0.5 launch highlights
+## Safety message
 
-- same-host cross-subject attack-chain correlation;
-- installation-keyed credential-spray source/account context;
-- installation-keyed optional outbound-destination identity;
-- stronger high-confidence review prioritization;
-- high-signal suppression bypass with lower-signal controls still suppressible;
-- Windows reverse-shell and credential-dumping behavior;
-- corrected Windows connection/auth/persistence collector contracts;
-- Office/PDF → interpreter/LOLBin ancestry detection;
-- Windows ransomware recovery-inhibition and event-log-clearing markers;
-- Linux web/server → already-suspicious-shell ancestry;
-- process/network corroboration;
-- expanded adversarial, privacy and false-positive regression matrix.
+QuietWard is designed to **observe and explain, not take control of the host**.
+
+The v0.5 update does not add automatic remediation. QuietWard does not automatically delete/quarantine files, kill processes, stop services, change firewall rules, isolate the computer or execute arbitrary commands. Monitoring and evidence remain local, and the dashboard is read-only.
 
 ## Intended audience
 
-QuietWard is most appropriate for:
+QuietWard is most appropriate for homelab/self-hosting users, security students/researchers, privacy-focused administrators, and developers experimenting with endpoint telemetry, correlation and evidence integrity. It should **not** be marketed as a replacement for Microsoft Defender, enterprise EDR/MDR or professional incident response.
 
-- homelab and self-hosting users who want local security visibility;
-- security students/researchers who want inspectable deterministic detection logic;
-- privacy-focused administrators who prefer review-first monitoring;
-- developers experimenting with endpoint telemetry and explainable correlation.
+## Launch highlights
 
-It should **not** be marketed as a replacement for Microsoft Defender, enterprise EDR, MDR or professional incident response.
+- smarter incident lifecycle tracking;
+- bounded multi-cycle process/network context;
+- credential-spray recognition with installation-keyed privacy identities;
+- stronger Windows reverse-shell, credential-dumping, ransomware-impact and event-log-clearing signals;
+- Office/PDF to risky interpreter/LOLBin ancestry context;
+- Linux web/server to already-suspicious shell ancestry context;
+- trusted Windows command/scanner resolution;
+- native low-overhead Windows FAST inventory;
+- lower background database/evidence overhead;
+- adaptive/staggered deep security checks;
+- improved local dashboard, coverage and retention visibility;
+- redacted incident export v2;
+- observation-only safety boundary retained.
 
 ## Launch post — short
 
-QuietWard v0.5.0-alpha.1 is a detection-hardening release for my open-source, observation-only endpoint security monitor.
+QuietWard v0.5.0-alpha.1 is the largest update yet to my open-source, observation-only endpoint security monitor.
 
-The update adds multi-stage same-host attack correlation, installation-keyed credential-spray/network identities, stronger high-confidence behavior scoring, suppression safety, Windows ransomware/evasion signals and improved Linux/Windows process ancestry detection—while preserving the core rule: QuietWard watches and explains, but does not automatically modify the host.
+The release adds smarter incident lifecycle tracking, multi-cycle process/network context, stronger Windows/Linux behavior detection, installation-keyed privacy for security identities, and a major performance redesign for lower background overhead.
 
-Experimental alpha. Local-first. Reviewable detection logic.
+The core rule stays the same: QuietWard watches and explains suspicious activity, but does not automatically modify the host.
+
+Experimental alpha. Offline-first. Reviewable detection logic.
 
 ## Launch post — LinkedIn / portfolio
 
-I’ve been building QuietWard, an offline-first cybersecurity monitoring project focused on a simple design principle: security software should be able to observe and explain suspicious activity without automatically changing the machine.
+I’ve been building QuietWard, an offline-first cybersecurity monitoring project built around a simple principle: security software should be able to observe and explain suspicious activity without automatically changing the machine.
 
-The v0.5 detection-hardening release adds deterministic multi-stage attack correlation, credential-spray recognition with installation-keyed identities, high-confidence behavioral scoring, suppression protections for newly dangerous evidence, Windows process/evasion signals, Linux process ancestry context and a broader adversarial/privacy/false-positive regression suite.
+QuietWard v0.5 is a major update to both the monitoring engine and the detection layer. It adds persistent incident lifecycle tracking, bounded multi-cycle process/network correlation, credential-spray recognition with installation-keyed identities, stronger Windows/Linux behavioral signals, a redesigned scheduling/persistence architecture for lower background overhead, improved evidence verification and a richer local dashboard.
 
-The system remains deliberately observation-only: no process termination, file quarantine, firewall modification or autonomous remediation. Raw authentication source addresses and optional outbound destinations are not persisted; durable source/destination correlation uses the private installation identity instead.
+The safety boundary remains deliberately narrow: no automatic process termination, file quarantine, firewall modification, host isolation or arbitrary command execution. Identity-bearing authentication and optional outbound network evidence use private per-installation pseudonyms rather than storing raw source/destination addresses.
 
-QuietWard is still an experimental alpha, but the project is intended to demonstrate practical endpoint telemetry, privacy-conscious security engineering, deterministic correlation and release qualification—not just a demo alert screen.
+QuietWard remains an experimental alpha, but v0.5 moves the project much closer to a practical, inspectable local security-monitoring platform while preserving its review-first design.
 
 ## Portfolio / resume bullet
 
-Built QuietWard, an offline-first observation-only endpoint security monitor with installation-keyed privacy identities, Windows/Linux telemetry, deterministic attack-chain correlation, behavioral scoring, suppression safety, evidence integrity and adversarial/false-positive release gates.
+Built QuietWard, an offline-first observation-only endpoint security monitor with Windows/Linux telemetry, incident lifecycle tracking, multi-cycle correlation, installation-keyed privacy identities, signed evidence, bounded performance scheduling and adversarial/false-positive release gates.
 
 ## Demo narrative
 
-For a short product demo:
-
 1. Show the localhost dashboard and observation-only status.
-2. Show a synthetic or controlled suspicious event sequence.
-3. Open a finding and show the evidence/reason explanations.
-4. Show how multiple attack phases are correlated without collapsing unrelated events.
-5. Show installation-keyed identity fields/markers rather than raw authentication sources, usernames or command data.
-6. Show that a high-signal synthetic event remains visible even if a lower-risk event for that subject had previously been suppressed.
-7. End on the safety statement: QuietWard reports; it does not execute remediation.
+2. Show a controlled/synthetic suspicious event sequence.
+3. Open the incident and show lifecycle state plus evidence/reasons.
+4. Show related process/network or prior-cycle context.
+5. Show pseudonymous identity fields rather than raw authentication addresses/usernames.
+6. Show that a later high-signal event remains visible despite an older routine suppression rule.
+7. Show coverage/evidence integrity and the zero-action status.
+8. End on the safety statement: QuietWard reports; it does not execute remediation.
 
 Do not use real malware in a marketing demo.
 
-## Claims that are safe after qualification
+## Claims safe only after exact public-SHA qualification
 
-- offline-first;
-- observation-only;
-- loopback dashboard by default;
-- deterministic detection/scoring/correlation;
-- installation-keyed authentication/address pseudonyms for the corrected v0.5 paths;
-- Windows 11 and Debian 12 qualified **only after v0.5 reruns pass**;
-- privacy-preserving credential-spray context;
-- no automatic remediation.
+After the exact v0.5 public release SHA passes its required gates, it is reasonable to claim offline-first, observation-only, local/read-only dashboard by default, deterministic detection/scoring/correlation, incident lifecycle tracking, installation-keyed authentication/address pseudonyms on corrected v0.5 paths, privacy-preserving credential-spray context, lower-overhead multi-cadence monitoring architecture, and no automatic remediation. Claim Windows 11 and Debian 12 qualification only if those exact public-SHA platform reruns pass.
 
 ## Claims to avoid
 
-Do not claim:
-
-- “stops ransomware”;
-- “prevents breaches”;
-- “enterprise EDR replacement”;
-- “production-ready”;
-- “zero false positives”;
-- “AI-powered autonomous security”;
-- support for an OS/platform that has not completed the v0.5 qualification gate.
+Do not claim “stops ransomware,” “prevents breaches,” “enterprise EDR replacement,” “production-ready,” “zero false positives,” or “AI-powered autonomous security.” Do not claim unmeasured performance figures or support for a platform that has not completed the v0.5 release gate.
 
 ## Release links to surface
 
-At publication, point reviewers/users to:
-
-- `README.md`
-- `docs/releases/v0.5.0-alpha.1.md`
-- `docs/V05_REVIEW_GUIDE.md`
-- `docs/V05_RELEASE_CORRECTIONS.md`
-- `docs/V05_DETECTION_REGRESSION_MATRIX.md`
-- `SECURITY.md`
-- `docs/PRIVACY.md`
-- the verified `quietward-v0.5.0-alpha.1-source.zip` and SHA-256 sidecar.
+At publication, surface `README.md`, `docs/releases/v0.5.0-alpha.1.md`, `docs/V05_REVIEW_GUIDE.md`, `docs/V05_MARKETING_KIT.md`, `SECURITY.md`, `docs/PRIVACY.md`, and the verified v0.5 source archive plus SHA-256 sidecar.
