@@ -126,6 +126,12 @@ def build_parser() -> argparse.ArgumentParser:
     suppress.add_argument("--minutes", type=int, required=True)
     suppress.add_argument("--note")
     incident_sub.add_parser("verify-chain")
+    findings = subparsers.add_parser("findings", help="read versioned redacted finding feed")
+    _config_argument(findings)
+    findings_sub = findings.add_subparsers(dest="findings_action", required=True)
+    export = findings_sub.add_parser("export", help="export findings incrementally as JSONL")
+    export.add_argument("--after")
+    export.add_argument("--limit", type=int, default=500)
     return parser
 
 
@@ -179,6 +185,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(json.dumps(result, indent=2 if args.pretty else None, sort_keys=True))
         return 0
     config = load_config(args.config)
+    if args.command == "findings":
+        with SentinelStore(config.storage) as store:
+            for record in store.finding_feed(after=args.after, limit=args.limit):
+                print(json.dumps(record, sort_keys=True))
+        return 0
     if args.command == "incident":
         with SentinelStore(config.storage) as store:
             action = args.incident_action

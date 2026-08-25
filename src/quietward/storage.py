@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import base64
 import json
 import sqlite3
 from contextlib import AbstractContextManager
@@ -12,6 +13,7 @@ from .collectors import CollectionBatch, CollectorSnapshot
 from .config import StorageSettings
 from .contracts import AnalysisReport, EventKind, SecurityEvent
 from .evidence import EvidenceSigner
+from .exports import build_redacted_incident_export
 
 
 def _utc_now() -> str:
@@ -794,6 +796,48 @@ class SentinelStore(AbstractContextManager["SentinelStore"]):
             "evidence_chain": self.verify_evidence_chain(),
             "actions_executed": 0,
         }
+
+    @staticmethod
+    def _feed_cursor(created_at: str, finding_id: str) -> str:
+        raw = _json({"v": 1, "created_at": created_at, "finding_id": finding_id})
+        return base64.urlsafe_b64encode(raw.encode("utf-8")).decode("ascii").rstrip("=")
+
+    @staticmethod
+    def _parse_feed_cursor(value: str | None) -> tuple[str, str] | None:
+        if value is None:
+            return None
+        try:
+            decoded = base64.urlsafe_b64decode(value + "=" * (-len(value) % 4)).decode("utf-8")
+            item = json.loads(decoded)
+            if not isinstance(item, dict) or item.get("v") != 1:
+                raise ValueError
+            return str(item["created_at"]), str(item["finding_id"])
+        except (ValueError, KeyError, TypeError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError("invalid findings-feed cursor") from exc
+
+    def finding_feed(self, *, after: str | None = None, limit: int = 500) -> list[dict[str, Any]]:
+        """Return versioned, redacted finding records in stable public order."""
+        if not 1 <= limit <= 500:
+            raise ValueError("findings-feed limit must be between 1 and 500")
+        cursor = self._parse_feed_cursor(after)
+        params: list[Any] = []
+        where = ""
+        if cursor is not None:
+            where = "WHERE (created_at > ? OR (created_at = ? AND finding_id > ?))"
+            params.extend((cursor[0], cursor[0], cursor[1]))
+        rows = self.connection.execute(
+            f"SELECT finding_id,created_at,payload_json FROM findings {where} ORDER BY created_at,finding_id LIMIT ?",
+            (*params, limit),
+        ).fetchall()
+        output: list[dict[str, Any]] = []
+        for row in rows:
+            bundle = self.incident_bundle(str(row["finding_id"]))
+            redacted = build_redacted_incident_export(bundle)
+            finding = redacted["finding"]
+            events = redacted["events"]
+            event = events[0] if events else {}
+            output.append({"schema_version": "1.0", "cursor": self._feed_cursor(str(row["created_at"]), str(row["finding_id"])), "finding_id": finding["finding_id"], "observed_at": event.get("observed_at") or finding["created_at"], "host_id": finding["host_id"], "event_type": event.get("kind") or "unknown", "category": None, "severity": finding["severity"], "confidence": event.get("confidence", 0.0), "summary": finding["summary"], "evidence": {"events": events, "evidence_chain": redacted["evidence_chain"]}, "source": "quietward", "source_version": "1.0"})
+        return output
 
     def summary(self) -> dict[str, Any]:
         def count(table: str) -> int:

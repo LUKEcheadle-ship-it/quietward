@@ -1,6 +1,6 @@
 [Unit]
 Description=QuietWard observation-only security monitor
-After=default.target
+After=default.target quietward-telemetry.service
 
 [Service]
 Type=simple

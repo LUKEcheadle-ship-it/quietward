@@ -24,6 +24,8 @@ def _linux_config(settings: CollectorSettings) -> LinuxCollectorConfig:
         privacy_identity_key_path=settings.privacy_identity_key_path,
         privacy_identity_namespace=settings.privacy_identity_namespace,
         data_identity_namespace=settings.data_identity_namespace,
+        telemetry_socket=settings.telemetry_socket,
+        telemetry_state_path=settings.telemetry_state_path,
     )
 
 

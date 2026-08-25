@@ -75,6 +75,8 @@ class CollectorSettings:
     privacy_identity_key_path: Path | None = None
     privacy_identity_namespace: str = "quietward-v1"
     data_identity_namespace: str = "quietward-v1"
+    telemetry_socket: Path | None = None
+    telemetry_state_path: Path | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -210,6 +212,8 @@ class SentinelConfig:
                 "privacy_identity_key_path",
                 "privacy_identity_namespace",
                 "data_identity_namespace",
+                "telemetry_socket",
+                "telemetry_state_path",
             },
             "collector",
         )
@@ -278,6 +282,8 @@ class SentinelConfig:
             data_identity_namespace=str(
                 raw_collector.get("data_identity_namespace") or "quietward-v1"
             ),
+            telemetry_socket=_absolute_optional_path(raw_collector.get("telemetry_socket"), "collector.telemetry_socket"),
+            telemetry_state_path=_absolute_optional_path(raw_collector.get("telemetry_state_path"), "collector.telemetry_state_path"),
         )
         if collector.privacy_identity_namespace not in {
             "quietward-v1",

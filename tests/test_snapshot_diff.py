@@ -93,6 +93,38 @@ class SnapshotDiffTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "host_id mismatch"):
             diff_snapshots(current, self.previous)
 
+    def test_process_burst_requires_bounded_parent_fanout(self) -> None:
+        processes = tuple(ProcessRecord(100 + index, 42, "user-hash", "sleep", "sleep", f"args-{index}") for index in range(8))
+        current = CollectorSnapshot(observed_at=self.now, host_id="host-test", processes=processes)
+        events = diff_snapshots(current, self.previous)
+        burst = [event for event in events if event.kind is EventKind.PROCESS_BURST]
+        self.assertEqual(len(burst), 1)
+        self.assertEqual(burst[0].attributes["process_count"], 8)
+        self.assertEqual(burst[0].attributes["parent_child_count"], 8)
+        self.assertGreater(burst[0].attributes["window_seconds"], 0)
+        self.assertFalse(burst[0].attributes["raw_arguments_persisted"])
+
+    def test_small_or_unrelated_processes_do_not_trigger_burst(self) -> None:
+        small = tuple(ProcessRecord(200 + index, 42, "user-hash", "bash", "bash", f"args-{index}") for index in range(3))
+        spread = tuple(ProcessRecord(300 + index, index, "user-hash", "make", "make", f"args-{index}") for index in range(8))
+        for processes in (small, spread):
+            current = CollectorSnapshot(observed_at=self.now, host_id="host-test", processes=processes)
+            self.assertNotIn(EventKind.PROCESS_BURST, {event.kind for event in diff_snapshots(current, self.previous)})
+
+    def test_encoded_shell_chain_is_a_redacted_execution_finding(self) -> None:
+        process = ProcessRecord(700, 42, "user-hash", "bash", "bash", "opaque-args", ("encoded_shell_chain",))
+        current = CollectorSnapshot(observed_at=self.now, host_id="host-test", processes=(process,))
+        event = diff_snapshots(current, self.previous)[0]
+        self.assertEqual(event.kind, EventKind.ENCODED_COMMAND)
+        self.assertTrue(event.attributes["encoded_argument_detected"])
+        self.assertEqual(event.attributes["encoding_style"], "base64-like")
+        self.assertFalse(event.attributes["raw_arguments_persisted"])
+
+    def test_normal_shell_and_python_do_not_create_encoded_event(self) -> None:
+        processes = (ProcessRecord(701, 42, "user-hash", "bash", "bash", "normal"), ProcessRecord(702, 42, "user-hash", "python3", "python3", "normal"))
+        current = CollectorSnapshot(observed_at=self.now, host_id="host-test", processes=processes)
+        self.assertNotIn(EventKind.ENCODED_COMMAND, {item.kind for item in diff_snapshots(current, self.previous)})
+
 
 if __name__ == "__main__":
     unittest.main()

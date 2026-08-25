@@ -7,6 +7,9 @@ from typing import Iterable
 from ..contracts import EventKind, SecurityEvent
 from .models import CollectorSnapshot, ConnectionRecord, ContainerRecord, FileRecord, PersistenceRecord, ProcessRecord, SocketRecord
 
+PROCESS_BURST_MINIMUM = 8
+PROCESS_BURST_PARENT_FANOUT = 6
+
 
 def _event_id(*parts: object) -> str:
     payload = "|".join(str(part) for part in parts).encode("utf-8", errors="replace")
@@ -70,11 +73,32 @@ def diff_snapshots(current: CollectorSnapshot, previous: CollectorSnapshot | Non
     observed_at = current.observed_at
     events: list[SecurityEvent] = []
 
+    # Snapshot comparison is intentionally bounded: only processes first seen
+    # during this collection interval are considered. No command arguments are
+    # retained; PID/PPID and command names provide explainable fan-out evidence.
+    prior_pids = {item.pid for item in previous.processes}
+    new_processes = [item for item in current.processes if item.pid not in prior_pids]
+    by_parent: dict[int, list[ProcessRecord]] = {}
+    for item in new_processes:
+        by_parent.setdefault(item.ppid, []).append(item)
+    parent_pid, children = max(by_parent.items(), key=lambda item: (len(item[1]), -item[0]), default=(None, []))
+    if len(new_processes) >= PROCESS_BURST_MINIMUM and len(children) >= PROCESS_BURST_PARENT_FANOUT:
+        window = max(1.0, (current.observed_at - previous.observed_at).total_seconds())
+        names = sorted({item.command_name[:100] for item in children})[:10]
+        event = SecurityEvent(
+            _event_id(current.host_id, "process-burst", parent_pid, tuple(sorted(item.pid for item in children)), observed_at.isoformat()),
+            observed_at, current.host_id, "debian_process_snapshot", EventKind.PROCESS_BURST,
+            f"process-burst:parent-{parent_pid}",
+            {"process_count": len(new_processes), "parent_pid": parent_pid, "parent_child_count": len(children), "window_seconds": window, "process_names": names, "raw_arguments_persisted": False, "raw_username_persisted": False, "baseline_deviation": 1.0}, 0.9,
+        )
+        events.append(event)
+
     for process in _new_items(current.processes, previous.processes, key=lambda item: item.identity):
         if not process.suspicious_markers:
             continue
         subject = process.executable or process.command_name
-        events.append(SecurityEvent(_event_id(current.host_id, "process", process.identity, observed_at.isoformat()), observed_at, current.host_id, "debian_process_snapshot", EventKind.PROCESS_START, subject, {"pid": process.pid, "ppid": process.ppid, "user_identity_hash": process.user, "command_name": process.command_name, "args_hash": process.args_hash, "suspicious_markers": list(process.suspicious_markers), "privileged_context": process.privileged_context or process.user == "root", "baseline_deviation": 1.0, "raw_arguments_persisted": False, "raw_username_persisted": False}, 0.9))
+        encoded = "encoded_shell_chain" in process.suspicious_markers
+        events.append(SecurityEvent(_event_id(current.host_id, "process", process.identity, observed_at.isoformat()), observed_at, current.host_id, "debian_process_snapshot", EventKind.ENCODED_COMMAND if encoded else EventKind.PROCESS_START, subject, {"pid": process.pid, "ppid": process.ppid, "user_identity_hash": process.user, "command_name": process.command_name, "args_hash": process.args_hash, "suspicious_markers": list(process.suspicious_markers), "encoded_argument_detected": encoded, "encoding_style": "base64-like" if encoded else None, "interpreter": process.command_name if encoded else None, "privileged_context": process.privileged_context or process.user == "root", "baseline_deviation": 1.0, "raw_arguments_persisted": False, "raw_username_persisted": False}, 0.9))
 
     for socket in _new_items(current.sockets, previous.sockets, key=lambda item: item.identity):
         subject = f"{socket.protocol}://{socket.local_address}:{socket.port}"

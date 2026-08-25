@@ -129,6 +129,44 @@ class StorageTests(unittest.TestCase):
                 store.mark_alerted(pending[0])
                 self.assertEqual(store.pending_alert_findings(), [])
 
+    def test_redacted_incremental_finding_feed_is_ordered_and_read_only(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            now = datetime.now(timezone.utc)
+            event = SecurityEvent("event-feed", now, "host", "test", EventKind.NEW_LISTENING_PORT, "tcp://0.0.0.0:4444")
+            with self.make_store(Path(temporary)) as store:
+                store.persist_cycle(CollectionBatch(CollectorSnapshot(now, "host"), (event,)), SentinelPipeline().analyze([event]), started_at=now, completed_at=now)
+                before = store.summary()["findings"]
+                rows = store.finding_feed()
+                self.assertEqual(len(rows), 1)
+                self.assertEqual(rows[0]["event_type"], "new_listening_port")
+                self.assertNotIn("4444", str(rows[0]["evidence"]))
+                self.assertEqual(store.finding_feed(after=rows[0]["cursor"]), [])
+                self.assertEqual(store.summary()["findings"], before)
+                with self.assertRaisesRegex(ValueError, "cursor"):
+                    store.finding_feed(after="not-a-cursor")
+
+    def test_process_burst_exports_through_generic_feed(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            now = datetime.now(timezone.utc)
+            event = SecurityEvent("event-process-burst", now, "host", "debian_process_snapshot", EventKind.PROCESS_BURST, "process-burst:parent-42", {"process_count": 10, "parent_child_count": 10, "window_seconds": 5, "raw_arguments_persisted": False}, 0.9)
+            with self.make_store(Path(temporary)) as store:
+                store.persist_cycle(CollectionBatch(CollectorSnapshot(now, "host"), (event,)), SentinelPipeline().analyze([event]), started_at=now, completed_at=now)
+                record = store.finding_feed()[0]
+                self.assertEqual(record["event_type"], "process_burst")
+                self.assertEqual(record["confidence"], 0.9)
+                self.assertTrue(record["cursor"])
+                self.assertNotIn("parent-42", str(record["evidence"]))
+
+    def test_encoded_command_exports_through_generic_feed(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            now = datetime.now(timezone.utc)
+            event = SecurityEvent("event-encoded", now, "host", "debian_process_snapshot", EventKind.ENCODED_COMMAND, "bash", {"encoded_argument_detected": True, "encoding_style": "base64-like", "raw_arguments_persisted": False}, 0.9)
+            with self.make_store(Path(temporary)) as store:
+                store.persist_cycle(CollectionBatch(CollectorSnapshot(now, "host"), (event,)), SentinelPipeline().analyze([event]), started_at=now, completed_at=now)
+                record = store.finding_feed()[0]
+                self.assertEqual(record["event_type"], "encoded_command")
+                self.assertTrue(record["evidence"]["events"][0]["attributes"]["encoded_argument_detected"])
+
 
 if __name__ == "__main__":
     unittest.main()

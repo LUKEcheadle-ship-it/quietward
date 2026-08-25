@@ -15,6 +15,7 @@ from .models import CollectionBatch, CollectorSnapshot, ProcessRecord
 from .parsers import parse_auth_journal, parse_connections_output, parse_docker_inspect_output, parse_docker_ps_ids, parse_docker_ps_output, parse_ps_output, parse_ss_output
 from .persistence import observe_persistence
 from .privacy import derive_host_id, redact_error
+from .transient import TransientTelemetryClient, transient_events
 from ..privacy_identity import PrivacyIdentity
 
 MAX_CONNECTION_RECORDS = 2_000
@@ -35,6 +36,8 @@ class DebianCollectorConfig:
     privacy_identity_key_path: Path | None = None
     privacy_identity_namespace: str = "quietward-v1"
     data_identity_namespace: str = "quietward-v1"
+    telemetry_socket: Path | None = None
+    telemetry_state_path: Path | None = None
 
     def __post_init__(self) -> None:
         if self.max_file_hash_bytes <= 0 or self.max_persistence_entries <= 0 or self.max_docker_inspects <= 0:
@@ -60,6 +63,11 @@ class DebianReadOnlyCollector:
                 )
             except ValueError:
                 self.privacy_identity = None
+        self.telemetry = (
+            TransientTelemetryClient(self.config.telemetry_socket, self.config.telemetry_state_path)
+            if self.config.telemetry_socket is not None and self.config.telemetry_state_path is not None
+            else None
+        )
 
     def collect(self, previous: CollectorSnapshot | None = None) -> CollectionBatch:
         observed_at = datetime.now(timezone.utc)
@@ -145,6 +153,13 @@ class DebianReadOnlyCollector:
             connections=connections,
         )
         events = diff_snapshots(snapshot, previous)
+
+        if self.telemetry is not None:
+            transient, transient_error = self.telemetry.drain()
+            if transient_error:
+                errors.append(transient_error)
+            else:
+                events.extend(transient_events(transient, self.host_id))
 
         if self.config.include_auth_journal:
             result = self.runner.run(JOURNAL_AUTH_COMMAND)
