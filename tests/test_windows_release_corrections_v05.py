@@ -113,4 +113,5 @@ def test_windows_persistence_parser_matches_powershell_wire_fields_without_raw_v
     assert record.metadata["raw_name_persisted"] is False
     assert record.metadata["raw_command_persisted"] is False
     assert record.metadata["raw_account_persisted"] is False
+    assert record.metadata["command_hash"] == record.metadata["command_identity_hash"]
     assert "unexpected_interpreter" in record.risk_markers
