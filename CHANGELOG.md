@@ -1,44 +1,65 @@
 # Changelog
 
-## 0.5.0-alpha.1 - 2026-08-23
+## 0.5.0-alpha.1 - 2026-08-25
 
-Detection-hardening candidate. QuietWard remains observation-only with no executable remediation.
+QuietWard v0.5 is the project's largest update so far, combining the lower-overhead always-on core, stable incident lifecycle, stronger privacy/evidence handling, and the public detection-hardening line while preserving observation-only behavior.
 
 ### Added
 
+- FAST, STANDARD, DEEP, and MAINTENANCE observation cadences with staggered heavy work and bounded adaptive deferral for optional deep/maintenance work only.
+- Native read-only Windows FAST process/PID and listening-socket inventory that avoids PowerShell startup on the normal quiet path while retaining fixed allowlisted PowerShell fallback/deeper context.
+- Stable incident lifecycle states: `new`, `recurring`, `changed`, and `resolved`.
+- Source-aware lifecycle resolution so degraded/not-due domains cannot be treated as proof of absence.
+- Bounded same-actor and prior-cycle temporal context with PID-reuse safeguards.
 - Bounded 15-minute same-host cross-subject attack-chain correlation for corroborated multi-stage activity.
+- Process/network corroboration using bounded existing process metadata and privacy-preserving destination identity.
 - Privacy-preserving credential-spray aggregation on Windows and Debian without persisting raw source addresses or usernames.
-- Process/network corroboration using existing bounded process names and hashed destination identity.
+- Installation-keyed HMAC-SHA256 identities for corrected authentication and optional outbound-address paths.
 - High-confidence deterministic scoring for reverse shells, credential dumping, process injection, document-spawned interpreters, ransomware recovery inhibition, event-log clearing, and dangerous container configurations.
-- Windows document/PDF application to interpreter/LOLBin parent-child detection with negative controls for ordinary child processes.
-- Windows ransomware recovery-inhibition and event-log-clearing behavioral markers.
-- Linux web-server to already-suspicious shell ancestry enrichment without collecting or persisting raw command arguments.
-- Dedicated v0.5 adversarial, false-positive, process/network, parent-child, release-contract, and detection-matrix regression suites.
-- `scripts/verify_v05_detection.py` as the v0.5 exact release/detection gate.
+- Windows document/PDF application to interpreter/LOLBin parent-child detection with benign negative controls.
+- Linux web/server to already-suspicious shell ancestry enrichment without persisting raw command arguments.
+- High-signal suppression bypass and fail-closed contextual suppression behavior.
+- Lower-write quiet persistence with bounded durable checkpoints and periodic full snapshots.
+- Incremental evidence verification between mandatory full retained-chain audits, with authoritative full fallback on mismatch.
+- Verified staged warm restart from recent established healthy signed state.
+- Runtime CPU, RSS, per-phase latency, command-count/time, persistence-mode, and health-write telemetry.
+- Enhanced read-only dashboard/status surfaces for lifecycle, monitoring coverage, evidence integrity, retention pressure, and explicit zero-action state.
+- Redacted incident export v2 and deterministic offline SPDX SBOM tooling.
+- Dedicated v0.5 adversarial, false-positive, process/network, parent-child, release-contract, integration, and detection-matrix regression suites.
 
 ### Hardened
 
-- Large multi-account credential sprays are promoted to a HIGH priority floor only after strong source/account corroboration.
-- High-signal behavioral floors affect prioritization only and never authorize a host action.
-- Cross-subject chains require bounded same-host temporal/phase corroboration rather than simple unrelated event diversity.
-- New ancestry detectors use only metadata already present in read-only snapshots.
-- Release verification continues to enforce `actions_executed == 0`, `executable_proposals == 0`, loopback-only dashboard binding, no cloud upload, and no public listener.
+- Large multi-account credential sprays reach a HIGH priority floor only after strong source/account corroboration.
+- High-signal behavioral floors affect review priority only and never authorize a host action.
+- Cross-subject chains require bounded same-host temporal/phase corroboration rather than unrelated event diversity.
+- Expected/suppressed routine activity cannot hide later explicit high-signal behavior.
+- Windows command/scanner execution resolves trusted absolute executables, rejects link/reparse paths, uses fixed allowlists, sanitized environments, and `shell=False`.
+- Quiet cycles can avoid redundant persistence/evidence/health durability work, while security-bearing or degraded observations remain durable.
+- Evidence and freshness caches are bounded, invalidatable, and periodically return to authoritative checks.
+- Dashboard remains read-only and loopback-only by default; cloud upload/public listeners remain disabled.
+- Release verification enforces `actions_executed == 0`, `executable_proposals == 0`, no GitHub Actions workflows, and the observation-only safety boundary.
 
 ### Release qualification
 
-Run:
+Run the complete public release gate:
+
+```text
+python scripts/validate_migrated_release.py --pretty
+```
+
+The focused v0.5 detection gate remains available:
 
 ```text
 python scripts/verify_v05_detection.py
 ```
 
-Then build the deterministic release archive on Windows with:
+Then build the deterministic Windows release archive with:
 
 ```text
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_release_candidate.ps1
 ```
 
-The archive verifier requires the versioned release notes, manifest/content hashes, deterministic two-build SHA match, public-release audit, and observation-only invariants.
+The release gate requires complete repository tests, compilation, static safety audit, strict public-release audit, deterministic double-build SHA match, checksum sidecar generation, and independent archive verification. Native Windows 11 and Debian 12 qualification still must pass on the exact public release SHA before tag/publication.
 
 ## 0.4.0-alpha.2 - 2026-08-17
 
