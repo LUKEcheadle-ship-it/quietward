@@ -33,9 +33,12 @@ class ReleaseCandidateToolingTests(unittest.TestCase):
         project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         version = VERIFY.display_version(str(project["project"]["version"]))
         notes = (ROOT / "docs" / "releases" / f"v{version}.md").read_text(encoding="utf-8")
+        lower = notes.lower()
         self.assertNotIn("PENDING", notes)
-        self.assertIn("checksum sidecar", notes.lower())
-        self.assertRegex(notes, r"\d+ passing tests")
+        self.assertIn("checksum sidecar", lower)
+        self.assertIn("exact public release sha", lower)
+        self.assertIn("windows 11", lower)
+        self.assertIn("debian 12", lower)
         self.assertIn(f"quietward-v{version}-source.zip", notes)
 
     def test_windows_release_wrappers_delegate_without_extra_authority(self) -> None:
@@ -78,6 +81,8 @@ class ReleaseCandidateToolingTests(unittest.TestCase):
         self.assertIn("deterministic", text.lower())
         self.assertIn("actions_executed", text)
         self.assertIn('quietward-v${DisplayVersion}-source.zip', text)
+        self.assertIn("SkipTests is forbidden", text)
+        self.assertIn("validate_migrated_release.py", text)
 
     def test_release_builder_uses_safe_powershell_interpolation(self) -> None:
         text = (ROOT / "scripts" / "build_release_candidate.ps1").read_text(encoding="utf-8")
@@ -94,7 +99,7 @@ class ReleaseCandidateToolingTests(unittest.TestCase):
     def test_release_builder_imports_src_without_installing_the_project(self) -> None:
         text = (ROOT / "scripts" / "build_release_candidate.ps1").read_text(encoding="utf-8")
         self.assertIn('$SourcePath = Join-Path $Root "src"', text)
-        self.assertIn('$env:PYTHONPATH =', text)
+        self.assertIn('$env:PYTHONPATH = $SourcePath', text)
         self.assertIn('$env:PYTHONPATH = $PreviousPythonPath', text)
 
     def _archive(self, path: Path, *, tamper: bool = False, manifest_root: object | None = None) -> None:
