@@ -20,10 +20,17 @@ REQUIRED = {
     "pyproject.toml",
     "docs/FIRST_RUN.md",
     "docs/RELEASE_CHECKLIST.md",
+    "docs/V05_REVIEW_GUIDE.md",
+    "docs/V05_MARKETING_KIT.md",
+    "docs/releases/v0.5.0-alpha.1.md",
     "scripts/install_windows.ps1",
     "scripts/uninstall_windows.ps1",
     "scripts/qualify_windows.ps1",
     "scripts/public_release_audit.py",
+    "scripts/audit_v05_safety.py",
+    "scripts/validate_migrated_release.py",
+    "scripts/verify_v05_detection.py",
+    "scripts/build_sbom.py",
     "scripts/migrate_pre_rename_user_install.py",
 }
 FORBIDDEN_PARTS = {
