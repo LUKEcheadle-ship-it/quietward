@@ -11,24 +11,33 @@ def test_v05_release_notes_match_combined_update_and_safety_boundary() -> None:
         encoding="utf-8"
     ).lower()
     required = (
+        "lower-cost always-on monitoring",
+        "fast",
+        "standard",
+        "deep",
+        "maintenance",
+        "read-only native windows apis",
+        "new",
+        "recurring",
+        "changed",
+        "resolved",
+        "bounded five-minute in-memory context window",
         "same-host multi-stage attack chains",
-        "bounded 15-minute window",
+        "process/network corroboration",
         "credential spray",
-        "raw source ip is not persisted",
         "installation-keyed hmac-sha256",
-        "same raw address produces different durable identities",
+        "fail closed",
         "suppression safety",
-        "reverse shells",
-        "document_spawned_interpreter",
-        "web_server_spawned_suspicious_shell",
+        "reverse-shell behavior",
+        "credential dumping/theft",
         "ransomware recovery inhibition",
         "event-log clearing",
-        "defender_tamper_command",
-        "windows collector/parser contracts",
-        "does not quarantine/delete files",
         "actions_executed == 0",
         "executable_proposals == 0",
-        "verify_v05_detection.py",
+        "checksum sidecar",
+        "current-head commit",
+        "native windows 11 and debian 12 qualification",
+        "experimental alpha",
     )
     missing = [fragment for fragment in required if fragment not in notes]
     assert missing == []
@@ -38,6 +47,7 @@ def test_v05_readme_keeps_combined_public_product_observation_only() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8").lower()
     required = (
         "0.5.0-alpha.1",
+        "0.5.0a1",
         "release/v0.5.0-alpha.1",
         "observation-only",
         "native windows fast",
