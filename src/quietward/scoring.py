@@ -33,13 +33,13 @@ _MARKER_WEIGHTS: dict[str, float] = {
     "credential_dumping": 30.0,
     "credential_theft": 28.0,
     "credential_spray": 22.0,
-    "reverse_shell": 32.0,
+    "reverse_shell": 30.0,
     "web_shell": 30.0,
     "process_injection": 30.0,
     "document_spawned_interpreter": 30.0,
     "server_spawned_suspicious_shell": 30.0,
     "web_server_spawned_suspicious_shell": 30.0,
-    "ransomware_recovery_inhibition": 34.0,
+    "ransomware_recovery_inhibition": 30.0,
     "event_log_clearing": 30.0,
     "defender_tamper_command": 20.0,
     "download_execute": 24.0,
@@ -57,8 +57,8 @@ _MARKER_WEIGHTS: dict[str, float] = {
     "cryptominer_indicator": 22.0,
     "network_listener_tool": 12.0,
     "volatile_directory_executable": 16.0,
-    "user_writable_executable": 14.0,
-    "user_writable_target": 14.0,
+    "user_writable_executable": 10.0,
+    "user_writable_target": 10.0,
     "privileged_service": 18.0,
     "network_target": 10.0,
     "dangerous_container_config": 28.0,
@@ -78,19 +78,10 @@ _MARKER_WEIGHTS: dict[str, float] = {
 }
 
 _HIGH_CONFIDENCE_MARKERS = {
-    "credential_dumping",
-    "credential_theft",
-    "reverse_shell",
-    "web_shell",
-    "process_injection",
-    "document_spawned_interpreter",
-    "server_spawned_suspicious_shell",
-    "web_server_spawned_suspicious_shell",
-    "ransomware_recovery_inhibition",
-    "event_log_clearing",
-    "dangerous_container_config",
-    "docker_socket_mount",
-    "host_root_mount",
+    "credential_dumping", "credential_theft", "reverse_shell", "web_shell",
+    "process_injection", "document_spawned_interpreter", "server_spawned_suspicious_shell",
+    "web_server_spawned_suspicious_shell", "ransomware_recovery_inhibition",
+    "event_log_clearing", "dangerous_container_config", "docker_socket_mount", "host_root_mount",
 }
 
 
@@ -106,21 +97,23 @@ def severity_for_score(score: float) -> Severity:
     return Severity.INFO
 
 
-def _normalized_markers(value: Any) -> tuple[str, ...]:
-    if not value:
-        return ()
-    if isinstance(value, str):
-        candidates = [value]
-    elif isinstance(value, (list, tuple, set)):
-        candidates = list(value)
-    else:
-        return ()
-    normalized = {
-        str(item).strip().lower().replace("-", "_").replace(" ", "_")
-        for item in candidates
-        if str(item).strip()
-    }
-    return tuple(sorted(normalized))
+def _markers(attributes: dict[str, Any]) -> set[str]:
+    result: set[str] = set()
+    for key in ("suspicious_markers", "risk_markers", "security_markers", "owner_suspicious_markers"):
+        raw = attributes.get(key)
+        if raw is None:
+            continue
+        values = (raw,) if isinstance(raw, str) else raw
+        try:
+            for value in values:
+                marker = str(value).strip().lower().replace("-", "_").replace(" ", "_")
+                if marker:
+                    result.add(marker)
+        except TypeError:
+            marker = str(raw).strip().lower().replace("-", "_").replace(" ", "_")
+            if marker:
+                result.add(marker)
+    return result
 
 
 def _integer_attribute(attributes: dict[str, Any], *names: str) -> int:
@@ -157,28 +150,19 @@ class DeterministicRiskScorer:
                 score += bonus
                 reasons.append(f"{label}=+{bonus:g}")
 
-        markers = _normalized_markers(
-            attrs.get("suspicious_markers")
-            or attrs.get("risk_markers")
-            or attrs.get("security_markers")
-        )
+        markers = _markers(attrs)
         if markers:
-            raw_bonus = 0.0
-            high_signal: list[str] = []
-            for marker in markers:
-                weight = _MARKER_WEIGHTS.get(marker, 10.0)
-                raw_bonus += weight
-                if marker in _MARKER_WEIGHTS:
-                    high_signal.append(marker)
-            marker_bonus = min(45.0, raw_bonus)
+            raw_bonus = sum(_MARKER_WEIGHTS.get(marker, 10.0) for marker in markers)
+            marker_bonus = min(30.0, raw_bonus)
             score += marker_bonus
             reasons.append(f"suspicious_markers=+{marker_bonus:.1f}")
+            high_signal = sorted(markers & _HIGH_CONFIDENCE_MARKERS)
             if high_signal:
                 reasons.append("high_signal_markers=" + ",".join(high_signal[:8]))
-            if set(markers) & _HIGH_CONFIDENCE_MARKERS and event.confidence >= 0.8:
-                before_floor = score
+            if high_signal and event.confidence >= 0.8:
+                before = score
                 score = max(score, 65.0)
-                if score > before_floor:
+                if score > before:
                     reasons.append("high_confidence_behavior_floor=65.0")
 
         failed = _integer_attribute(attrs, "failed_count", "failure_count", "attempt_count")
@@ -187,36 +171,17 @@ class DeterministicRiskScorer:
             score += bonus
             reasons.append(f"failed_count={failed}:+{bonus:.1f}")
 
-        distinct_accounts = _integer_attribute(
-            attrs,
-            "distinct_accounts",
-            "unique_accounts",
-            "unique_users",
-            "target_account_count",
-            "target_count",
-        )
-        source_failures = _integer_attribute(
-            attrs,
-            "source_failed_count",
-            "source_failure_count",
-            "source_attempt_count",
-        )
+        distinct_accounts = _integer_attribute(attrs, "distinct_accounts", "unique_accounts", "unique_users", "target_account_count", "target_count")
+        source_failures = _integer_attribute(attrs, "source_failed_count", "source_failure_count", "source_attempt_count")
         spray_attempts = max(failed, source_failures)
-        if (
-            event.kind is EventKind.AUTH_FAILURE
-            and spray_attempts >= 10
-            and distinct_accounts >= 5
-        ):
+        if event.kind is EventKind.AUTH_FAILURE and spray_attempts >= 10 and distinct_accounts >= 5:
             spray_bonus = min(22.0, 8.0 + 2.0 * log2(distinct_accounts))
             score += spray_bonus
-            reasons.append(
-                f"credential_spray_context={distinct_accounts}_accounts/"
-                f"{spray_attempts}_source_failures:+{spray_bonus:.1f}"
-            )
+            reasons.append(f"credential_spray_context={distinct_accounts}_accounts/{spray_attempts}_source_failures:+{spray_bonus:.1f}")
             if spray_attempts >= 32 and distinct_accounts >= 8 and event.confidence >= 0.8:
-                before_floor = score
+                before = score
                 score = max(score, 65.0)
-                if score > before_floor:
+                if score > before:
                     reasons.append("credential_spray_high_priority_floor=65.0")
 
         cvss = float(attrs.get("cvss") or 0)
@@ -231,10 +196,20 @@ class DeterministicRiskScorer:
             score += bonus
             reasons.append(f"baseline_deviation={deviation:.2f}:+{bonus:.1f}")
 
+        temporal_count = max(0, int(attrs.get("temporal_context_count") or 0))
+        temporal_kinds = max(0, int(attrs.get("temporal_context_distinct_kinds") or 0))
+        actor_match = bool(attrs.get("temporal_context_actor_match"))
+        subject_match = bool(attrs.get("temporal_context_subject_match"))
+        if temporal_count and temporal_kinds and (actor_match or subject_match):
+            if actor_match:
+                bonus = min(10.0, 4.0 + 2.0 * temporal_kinds)
+                label = "temporal_actor_context"
+            else:
+                bonus = min(6.0, 2.0 + 2.0 * temporal_kinds)
+                label = "temporal_subject_context"
+            score += bonus
+            reasons.append(f"{label}=+{bonus:.1f}")
+            reasons.append(f"temporal_related_events={temporal_count};kinds={temporal_kinds}")
+
         score = max(0.0, min(100.0, score))
-        return EventAssessment(
-            event.event_id,
-            score,
-            severity_for_score(score),
-            tuple(reasons),
-        )
+        return EventAssessment(event.event_id, score, severity_for_score(score), tuple(reasons))
