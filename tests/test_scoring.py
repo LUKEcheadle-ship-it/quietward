@@ -46,6 +46,59 @@ class RiskScoringTests(unittest.TestCase):
         self.assertGreaterEqual(result.score, 40.0)
         self.assertEqual(result.severity, Severity.MEDIUM)
 
+    def test_listener_owner_markers_raise_priority(self) -> None:
+        scorer = DeterministicRiskScorer()
+        ordinary = scorer.score(
+            event(
+                EventKind.NEW_LISTENING_PORT,
+                {
+                    "external_bind": True,
+                    "baseline_deviation": 1.0,
+                },
+                confidence=0.9,
+            )
+        )
+        attributed = scorer.score(
+            event(
+                EventKind.NEW_LISTENING_PORT,
+                {
+                    "external_bind": True,
+                    "baseline_deviation": 1.0,
+                    "owner_suspicious_markers": ["user_writable_executable"],
+                },
+                confidence=0.9,
+            )
+        )
+        self.assertEqual(attributed.score, ordinary.score + 10.0)
+        self.assertIn("suspicious_markers=+10.0", attributed.reasons)
+
+    def test_marker_sources_are_combined_without_duplicate_inflation(self) -> None:
+        result = DeterministicRiskScorer().score(
+            event(
+                EventKind.PERSISTENCE_CHANGE,
+                {
+                    "risk_markers": ["user_writable_target", "network_target"],
+                    "security_markers": ["network_target"],
+                    "owner_suspicious_markers": ["user_writable_target"],
+                },
+            )
+        )
+        self.assertIn("suspicious_markers=+20.0", result.reasons)
+        self.assertNotIn("suspicious_markers=+30.0", result.reasons)
+
+    def test_marker_bonus_remains_capped(self) -> None:
+        result = DeterministicRiskScorer().score(
+            event(
+                EventKind.FILE_CHANGE,
+                {
+                    "suspicious_markers": ["one", "two"],
+                    "risk_markers": ["three", "four"],
+                    "security_markers": ["five"],
+                },
+            )
+        )
+        self.assertIn("suspicious_markers=+30.0", result.reasons)
+
 
 if __name__ == "__main__":
     unittest.main()
