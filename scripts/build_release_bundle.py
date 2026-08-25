@@ -10,6 +10,7 @@ from pathlib import Path
 
 EXCLUDED_PARTS = {
     ".git",
+    ".pytest_cache",
     "__pycache__",
     ".venv",
     "venv",
