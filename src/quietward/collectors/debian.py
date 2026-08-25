@@ -8,14 +8,33 @@ from pathlib import Path
 from typing import Sequence
 
 from ..contracts import EventKind, SecurityEvent
-from .command import CONNECTIONS_COMMAND, DOCKER_INSPECT_PREFIX, DOCKER_PS_COMMAND, JOURNAL_AUTH_COMMAND, PS_COMMAND, SS_COMMAND, CommandResult, CommandRunner, ReadOnlyCommandRunner
+from ..privacy_identity import PrivacyIdentity
+from .command import (
+    CONNECTIONS_COMMAND,
+    DOCKER_INSPECT_PREFIX,
+    DOCKER_PS_COMMAND,
+    JOURNAL_AUTH_COMMAND,
+    PS_COMMAND,
+    SS_COMMAND,
+    CommandResult,
+    CommandRunner,
+    ReadOnlyCommandRunner,
+)
 from .diff import diff_snapshots
+from .docker_batch import parse_docker_inspect_batch_output
 from .files import DEFAULT_SENSITIVE_FILES, observe_file
 from .models import CollectionBatch, CollectorSnapshot, ProcessRecord
-from .parsers import parse_auth_journal, parse_connections_output, parse_docker_inspect_output, parse_docker_ps_ids, parse_docker_ps_output, parse_ps_output, parse_ss_output
+from .parsers import (
+    parse_auth_journal,
+    parse_connections_output,
+    parse_docker_inspect_output,
+    parse_docker_ps_ids,
+    parse_docker_ps_output,
+    parse_ps_output,
+    parse_ss_output,
+)
 from .persistence import observe_persistence
 from .privacy import derive_host_id, redact_error
-from ..privacy_identity import PrivacyIdentity
 
 MAX_CONNECTION_RECORDS = 2_000
 
@@ -37,7 +56,11 @@ class DebianCollectorConfig:
     data_identity_namespace: str = "quietward-v1"
 
     def __post_init__(self) -> None:
-        if self.max_file_hash_bytes <= 0 or self.max_persistence_entries <= 0 or self.max_docker_inspects <= 0:
+        if (
+            self.max_file_hash_bytes <= 0
+            or self.max_persistence_entries <= 0
+            or self.max_docker_inspects <= 0
+        ):
             raise ValueError("collector limits must be positive")
         for path in self.sensitive_files:
             if not path.is_absolute():
@@ -45,7 +68,12 @@ class DebianCollectorConfig:
 
 
 class DebianReadOnlyCollector:
-    def __init__(self, config: DebianCollectorConfig | None = None, runner: CommandRunner | None = None, host_id: str | None = None) -> None:
+    def __init__(
+        self,
+        config: DebianCollectorConfig | None = None,
+        runner: CommandRunner | None = None,
+        host_id: str | None = None,
+    ) -> None:
         self.config = config or DebianCollectorConfig()
         self.runner = runner or ReadOnlyCommandRunner()
         self.host_id = host_id or derive_host_id(
@@ -65,6 +93,30 @@ class DebianReadOnlyCollector:
             except ValueError:
                 self.privacy_identity = None
 
+    def _inspect_containers(self, base, ids, errors: list[str]):
+        limit = min(len(base), len(ids), self.config.max_docker_inspects)
+        if limit <= 0:
+            return tuple(base)
+        batch = self.runner.run((*DOCKER_INSPECT_PREFIX, *ids[:limit]))
+        if self._ok(batch, "Docker inspect batch", errors, optional=True):
+            enriched = list(
+                parse_docker_inspect_batch_output(batch.stdout, base[:limit])
+            )
+            enriched.extend(base[limit:])
+            return tuple(enriched)
+
+        enriched = []
+        for index, record in enumerate(base):
+            if index >= limit:
+                enriched.append(record)
+                continue
+            single = self.runner.run((*DOCKER_INSPECT_PREFIX, ids[index]))
+            if self._ok(single, f"Docker inspect {record.name}", errors, optional=True):
+                enriched.append(parse_docker_inspect_output(single.stdout, record))
+            else:
+                enriched.append(record)
+        return tuple(enriched)
+
     def collect(self, previous: CollectorSnapshot | None = None) -> CollectionBatch:
         observed_at = datetime.now(timezone.utc)
         errors: list[str] = []
@@ -81,7 +133,9 @@ class DebianReadOnlyCollector:
                     ProcessRecord(
                         item.pid,
                         item.ppid,
-                        self.privacy_identity.identify(item.user) if self.privacy_identity else "unavailable",
+                        self.privacy_identity.identify(item.user)
+                        if self.privacy_identity
+                        else "unavailable",
                         item.command_name,
                         item.executable,
                         item.args_hash,
@@ -118,19 +172,12 @@ class DebianReadOnlyCollector:
                     namespace=self.config.data_identity_namespace,
                 )
                 ids = parse_docker_ps_ids(result.stdout)
-                enriched = []
-                for index, record in enumerate(base):
-                    if index >= self.config.max_docker_inspects or index >= len(ids):
-                        enriched.append(record)
-                        continue
-                    inspect = self.runner.run((*DOCKER_INSPECT_PREFIX, ids[index]))
-                    if self._ok(inspect, f"Docker inspect {record.name}", errors, optional=True):
-                        enriched.append(parse_docker_inspect_output(inspect.stdout, record))
-                    else:
-                        enriched.append(record)
-                containers = tuple(enriched)
+                containers = self._inspect_containers(base, ids, errors)
 
-        files = tuple(observe_file(path, self.config.max_file_hash_bytes) for path in self.config.sensitive_files)
+        files = tuple(
+            observe_file(path, self.config.max_file_hash_bytes)
+            for path in self.config.sensitive_files
+        )
         for record in files:
             if record.error:
                 errors.append(f"file observation {record.path}: {record.error}")
@@ -158,7 +205,12 @@ class DebianReadOnlyCollector:
 
         if self.config.include_auth_journal:
             result = self.runner.run(JOURNAL_AUTH_COMMAND)
-            if self._ok(result, "SSH authentication journal", errors, optional=True):
+            if self._ok(
+                result,
+                "SSH authentication journal",
+                errors,
+                optional=True,
+            ):
                 if self.privacy_identity is not None:
                     events.extend(
                         self._auth_events(
@@ -170,7 +222,9 @@ class DebianReadOnlyCollector:
                         )
                     )
                 else:
-                    errors.append("SSH authentication journal privacy identity unavailable")
+                    errors.append(
+                        "SSH authentication journal privacy identity unavailable"
+                    )
 
         snapshot = CollectorSnapshot(
             observed_at=snapshot.observed_at,
@@ -187,14 +241,29 @@ class DebianReadOnlyCollector:
         return CollectionBatch(snapshot, tuple(events))
 
     @staticmethod
-    def _ok(result: CommandResult, label: str, errors: list[str], optional: bool = False) -> bool:
+    def _ok(
+        result: CommandResult,
+        label: str,
+        errors: list[str],
+        optional: bool = False,
+    ) -> bool:
         if result.returncode == 0:
+            if "[output truncated]" in result.stdout or "[output truncated]" in result.stderr:
+                prefix = "optional " if optional else ""
+                errors.append(
+                    f"{prefix}{label} unavailable: output exceeded the safety limit"
+                )
+                return False
             return True
         prefix = "optional " if optional or result.returncode == 127 else ""
         errors.append(f"{prefix}{label} unavailable: {redact_error(result.stderr)}")
         return False
 
-    def _auth_events(self, rows: Sequence[dict[str, object]], fallback_time: datetime) -> list[SecurityEvent]:
+    def _auth_events(
+        self,
+        rows: Sequence[dict[str, object]],
+        fallback_time: datetime,
+    ) -> list[SecurityEvent]:
         if self.privacy_identity is None:
             return []
 
@@ -222,7 +291,8 @@ class DebianReadOnlyCollector:
             distinct_accounts = len(source_users[address_hash])
             spray_candidate = total_from_source >= 10 and distinct_accounts >= 5
             digest = hashlib.sha256(
-                f"{self.host_id}|auth|{address_hash}|{user_identity_hash}|{latest.isoformat()}|{len(group)}".encode()
+                f"{self.host_id}|auth|{address_hash}|{user_identity_hash}|"
+                f"{latest.isoformat()}|{len(group)}".encode()
             ).hexdigest()[:20]
             events.append(
                 SecurityEvent(
