@@ -7,21 +7,14 @@ trap 'rm -rf "${temporary}"' EXIT
 
 cd "${repo_root}"
 
-# Run the exact v0.5 hardening gate first. It sets its own PYTHONPATH, executes the
-# full pytest suite with warnings-as-errors, verifies product separation and runs
-# the public-release audit.
-python3 scripts/verify_v05_detection.py
+# Run the complete public v0.5 release gate: repository tests, compilation,
+# observation-only safety audit, strict public audit, deterministic double build,
+# and independent verification of both archives.
+python3 scripts/validate_migrated_release.py --root "${repo_root}" --pretty
 
-python3 scripts/build_release_bundle.py "${temporary}/first.zip"
-python3 scripts/build_release_bundle.py "${temporary}/second.zip"
+# Build once more as the publication candidate and independently verify it.
+python3 scripts/build_release_bundle.py "${temporary}/quietward-v0.5.0-alpha.1-source.zip" --root "${repo_root}"
+python3 scripts/verify_release_bundle.py "${temporary}/quietward-v0.5.0-alpha.1-source.zip"
 
-first_sha="$(sha256sum "${temporary}/first.zip" | awk '{print $1}')"
-second_sha="$(sha256sum "${temporary}/second.zip" | awk '{print $1}')"
-if [[ "${first_sha}" != "${second_sha}" ]]; then
-  echo "Deterministic release bundle check failed." >&2
-  exit 1
-fi
-
-python3 scripts/verify_release_bundle.py "${temporary}/first.zip"
-
-printf 'QuietWard v0.5 release validation passed.\nSource bundle SHA-256: %s\n' "${first_sha}"
+sha="$(sha256sum "${temporary}/quietward-v0.5.0-alpha.1-source.zip" | awk '{print $1}')"
+printf 'QuietWard v0.5 release validation passed.\nSource bundle SHA-256: %s\n' "${sha}"
