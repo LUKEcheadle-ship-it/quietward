@@ -32,6 +32,16 @@ FORBIDDEN_PARTS = {
     "quarantine",
     "qualification",
 }
+PRIVATE_ONLY_PATHS = {
+    Path("NOTICE"),
+    Path("scripts/migrate_private_repo_to_quietward.py"),
+    Path("tests/test_migrate_private_repo_to_quietward.py"),
+    Path("docs/CORE_ENGINEERING_CHECKPOINT.md"),
+    Path("docs/CORE_PERFORMANCE_ARCHITECTURE.md"),
+    Path("docs/P520_V05_EXECUTION.md"),
+    Path("docs/V0.5_DEVELOPMENT_PLAN.md"),
+    Path("docs/V05_APPROVAL_PACKET.md"),
+}
 SECRET_PATTERNS = {
     "private_key": re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
     "github_token": re.compile(r"gh[pousr]_[A-Za-z0-9]{20,}"),
@@ -73,10 +83,18 @@ REQUIRED = {
     "docs/FIRST_RUN.md",
     "docs/WINDOWS.md",
     "docs/RELEASE_CHECKLIST.md",
+    "docs/V05_REVIEW_GUIDE.md",
+    "docs/V05_MARKETING_KIT.md",
+    "docs/V05_DETECTION_REGRESSION_MATRIX.md",
+    "docs/releases/v0.5.0-alpha.1.md",
     "scripts/build_release_bundle.py",
     "scripts/build_release_candidate.ps1",
     "scripts/verify_release_bundle.py",
     "scripts/public_release_audit.py",
+    "scripts/audit_v05_safety.py",
+    "scripts/validate_migrated_release.py",
+    "scripts/verify_v05_detection.py",
+    "scripts/build_sbom.py",
     "scripts/migrate_pre_rename_user_install.py",
     "scripts/validate_release.sh",
     "scripts/install_windows.ps1",
@@ -153,8 +171,14 @@ def audit(root: Path) -> dict[str, object]:
         for path in sorted(REQUIRED)
         if not (root / path).is_file()
     )
-    if (root / "NOTICE").exists():
-        blockers.append("unnecessary standalone NOTICE file must remain removed")
+    blockers.extend(
+        f"private-only path remained in public tree: {path.as_posix()}"
+        for path in sorted(PRIVATE_ONLY_PATHS, key=lambda item: item.as_posix())
+        if (root / path).exists()
+    )
+    workflows = root / ".github" / "workflows"
+    if workflows.exists() and any(path.is_file() for path in workflows.rglob("*")):
+        blockers.append("GitHub Actions workflows are not permitted for this release line")
     _release_metadata_checks(root, blockers)
 
     for path in sorted(root.rglob("*")):
