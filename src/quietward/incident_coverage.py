@@ -29,9 +29,9 @@ def _collector_domain(source: str) -> str | None:
         "journald_ssh_read_only",
     }:
         return "authentication"
-    if value == "sentinel_self_integrity":
+    if value in {"sentinel_self_integrity", "quietward_self_integrity"}:
         return "self_integrity"
-    if value == "sentinel_evidence_chain":
+    if value in {"sentinel_evidence_chain", "quietward_evidence_chain"}:
         return "evidence_chain"
     if value in {"microsoft_defender", "windows_defender"}:
         return "microsoft_defender"
