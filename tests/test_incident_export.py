@@ -90,21 +90,23 @@ class IncidentExportTests(unittest.TestCase):
         )
         return build_redacted_incident_export(bundle)
 
-    def test_redacted_export_excludes_subjects_notes_and_free_text(self) -> None:
+    def test_redacted_export_excludes_subjects_hosts_notes_and_free_text(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             config_path, finding_id, secret_subject = self._stored_finding(root)
             value = self._redacted_value(config_path, finding_id)
             serialized = json.dumps(value)
-            self.assertEqual(value["export_version"], "quietward-redacted-incident-v1")
+            self.assertEqual(value["export_version"], "quietward-redacted-incident-v2")
             self.assertIn("QuietWard incident", value["finding"]["title"])
             self.assertNotIn(secret_subject, serialized)
+            self.assertNotIn('"host_id": "host-test"', serialized)
             self.assertNotIn("private analyst note", serialized)
             self.assertNotIn("private-process", serialized)
             self.assertNotIn('"user": "luke"', serialized)
             self.assertNotIn("free-text detail", serialized)
             self.assertNotIn("proposal reason", serialized)
             self.assertTrue(value["privacy"]["subjects_redacted"])
+            self.assertTrue(value["privacy"]["host_ids_redacted"])
             self.assertTrue(value["privacy"]["arbitrary_strings_hashed"])
             self.assertFalse(value["review"]["analyst_note_included"])
             self.assertFalse(value["proposals"][0]["reason_included"])
@@ -132,6 +134,8 @@ class IncidentExportTests(unittest.TestCase):
             self.assertEqual(result, 0)
             if os.name != "nt":
                 self.assertEqual(output.stat().st_mode & 0o777, 0o600)
+            loaded = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(loaded["export_version"], "quietward-redacted-incident-v2")
             self.assertNotIn(secret_subject, output.read_text(encoding="utf-8"))
             with self.assertRaises(FileExistsError):
                 console_main(
@@ -163,7 +167,7 @@ class IncidentExportTests(unittest.TestCase):
             loaded = json.loads(output.read_text(encoding="utf-8"))
             self.assertEqual(
                 loaded["export_version"],
-                "quietward-redacted-incident-v1",
+                "quietward-redacted-incident-v2",
             )
 
     def test_export_rejects_dangling_symlink(self) -> None:
