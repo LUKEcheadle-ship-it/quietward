@@ -4,7 +4,7 @@ QuietWard is an offline-first, observation-only cybersecurity monitor that expla
 
 ## Release status
 
-`v0.5.0-alpha.1` is the current **experimental alpha release candidate** on `release/v0.5.0-alpha.1`. It is the project's largest architecture, performance, privacy, incident-lifecycle, and detection update so far.
+`v0.5.0-alpha.1` is the current **experimental alpha release candidate** on `release/v0.5.0-alpha.1`. Python package version: `0.5.0a1`. It is the project's largest architecture, performance, privacy, incident-lifecycle, and detection update so far.
 
 The release candidate must complete exact-public-SHA platform/release qualification before tag/publication.
 
