@@ -83,6 +83,7 @@ def _verify_combined_source_contract() -> None:
         "correlation.py": (ROOT / "src" / "quietward" / "correlation.py").read_text(encoding="utf-8"),
         "scoring.py": (ROOT / "src" / "quietward" / "scoring.py").read_text(encoding="utf-8"),
         "product_store.py": (ROOT / "src" / "quietward" / "product_store.py").read_text(encoding="utf-8"),
+        "suppression.py": (ROOT / "src" / "quietward" / "suppression.py").read_text(encoding="utf-8"),
         "runtime.py": (ROOT / "src" / "quietward" / "runtime.py").read_text(encoding="utf-8"),
         "core_service.py": (ROOT / "src" / "quietward" / "core_service.py").read_text(encoding="utf-8"),
         "performance_budget.py": (ROOT / "src" / "quietward" / "performance_budget.py").read_text(encoding="utf-8"),
@@ -117,11 +118,16 @@ def _verify_combined_source_contract() -> None:
             "temporal_actor_context",
         ),
         "product_store.py": (
-            "_SUPPRESSION_BYPASS_MARKERS",
             "_bypasses_suppression",
+            "event_bypasses_suppression",
+            "_finding_current_cycle_event_ids",
+        ),
+        "suppression.py": (
+            "_BYPASS_MARKERS",
+            "event_bypasses_suppression",
+            "partition_for_suppression",
             '"reverse_shell"',
             '"credential_spray"',
-            "_finding_current_cycle_event_ids",
         ),
         "runtime.py": (
             "CoreSentinelService",
