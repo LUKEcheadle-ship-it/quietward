@@ -176,7 +176,10 @@ def resolve_trusted_git() -> Path | None:
         if paths is None:
             return None
         resolved = trusted_executable(_windows_git_candidates(paths), paths.executable_roots)
-        return Path(resolved) if resolved is not None else None
+        # Path() consults os.name at call time. Tests deliberately emulate the
+        # Windows branch on POSIX, so retain the native concrete path class that
+        # was selected when this module loaded.
+        return type(ROOT)(resolved) if resolved is not None else None
     for candidate in _POSIX_GIT_CANDIDATES:
         if _regular_non_link_file(candidate, executable=True):
             return candidate.resolve(strict=True)

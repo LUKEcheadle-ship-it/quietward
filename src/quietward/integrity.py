@@ -46,6 +46,46 @@ def _hash_file(path: Path, max_bytes: int) -> tuple[str, int, int, int, int] | N
     return hasher.hexdigest(), stat.S_IMODE(after.st_mode), after.st_size, after.st_mtime_ns, after.st_ctime_ns
 
 
+def _sample_file(path: Path, max_bytes: int, sample_bytes: int = 4 * 1024) -> str | None:
+    """Return a bounded change token without following links.
+
+    Some supported filesystems expose timestamps too coarsely to distinguish two
+    same-size writes.  Sampling the beginning and end keeps the fast-path bounded
+    while forcing a full hash when common metadata-preserving tampering occurs.
+    The periodic full audit remains the authoritative whole-file check.
+    """
+
+    metadata = _file_metadata(path, max_bytes)
+    if metadata is None:
+        return None
+    _mode, size, _mtime_ns, _ctime_ns = metadata
+    try:
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0))
+        try:
+            before = os.fstat(descriptor)
+            if not stat.S_ISREG(before.st_mode) or before.st_size != size:
+                return None
+            first = os.read(descriptor, min(sample_bytes, size))
+            last = b""
+            if size > sample_bytes:
+                os.lseek(descriptor, max(0, size - sample_bytes), os.SEEK_SET)
+                last = os.read(descriptor, sample_bytes)
+            after = os.fstat(descriptor)
+        finally:
+            os.close(descriptor)
+    except OSError:
+        return None
+    if before.st_dev != after.st_dev or before.st_ino != after.st_ino or before.st_size != after.st_size:
+        return None
+    token = hashlib.sha256()
+    token.update(str(size).encode("ascii"))
+    token.update(b"\0")
+    token.update(first)
+    token.update(b"\0")
+    token.update(last)
+    return token.hexdigest()
+
+
 @dataclass(frozen=True, slots=True)
 class IntegrityScan:
     manifest: dict[str, dict[str, object]]
@@ -118,16 +158,17 @@ class SelfIntegrityMonitor:
             if metadata is None:
                 continue
             mode, size, mtime_ns, ctime_ns = metadata
-            can_reuse = os.name != "nt" and not full_audit and prior is not None and prior.get("sha256") is not None and prior.get("mode") == mode and prior.get("size") == size and prior.get("mtime_ns") == mtime_ns and prior.get("ctime_ns") == ctime_ns
+            sample_sha256 = _sample_file(path, self.max_file_bytes)
+            can_reuse = os.name != "nt" and not full_audit and prior is not None and prior.get("sha256") is not None and sample_sha256 is not None and prior.get("sample_sha256") == sample_sha256 and prior.get("mode") == mode and prior.get("size") == size and prior.get("mtime_ns") == mtime_ns and prior.get("ctime_ns") == ctime_ns
             if can_reuse:
-                manifest[key] = {"sha256": prior.get("sha256"), "mode": mode, "size": size, "mtime_ns": mtime_ns, "ctime_ns": ctime_ns}
+                manifest[key] = {"sha256": prior.get("sha256"), "sample_sha256": sample_sha256, "mode": mode, "size": size, "mtime_ns": mtime_ns, "ctime_ns": ctime_ns}
                 hashes_reused += 1
                 continue
             value = _hash_file(path, self.max_file_bytes)
             if value is None:
                 continue
             digest, hashed_mode, hashed_size, hashed_mtime_ns, hashed_ctime_ns = value
-            manifest[key] = {"sha256": digest, "mode": hashed_mode, "size": hashed_size, "mtime_ns": hashed_mtime_ns, "ctime_ns": hashed_ctime_ns}
+            manifest[key] = {"sha256": digest, "sample_sha256": sample_sha256, "mode": hashed_mode, "size": hashed_size, "mtime_ns": hashed_mtime_ns, "ctime_ns": hashed_ctime_ns}
             files_hashed += 1
         if full_audit:
             self._last_full_hash_at = now

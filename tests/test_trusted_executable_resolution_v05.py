@@ -15,8 +15,9 @@ def test_posix_collector_resolver_rejects_binary_outside_trusted_system_paths(tm
     fake = tmp_path / "ps"
     fake.write_text("not a real binary", encoding="utf-8")
     fake.chmod(0o755)
-    monkeypatch.setattr(command.shutil, "which", lambda name, path=None: str(fake))
-    assert command._trusted_posix_executable("ps") is None
+    monkeypatch.setenv("PATH", str(tmp_path))
+    monkeypatch.setattr(command, "_regular_non_link_executable", lambda path: False)
+    assert command.resolve_trusted_executable("ps") is None
 
 
 def test_posix_scanner_resolver_rejects_binary_outside_trusted_system_paths(tmp_path: Path, monkeypatch) -> None:
@@ -25,8 +26,9 @@ def test_posix_scanner_resolver_rejects_binary_outside_trusted_system_paths(tmp_
     fake = tmp_path / "trivy"
     fake.write_text("not a real binary", encoding="utf-8")
     fake.chmod(0o755)
-    monkeypatch.setattr(execution.shutil, "which", lambda name, path=None: str(fake))
-    assert execution._trusted_default_resolver("trivy") is None
+    monkeypatch.setenv("PATH", str(tmp_path))
+    monkeypatch.setattr(execution, "_regular_non_link_executable", lambda path: False)
+    assert execution.resolve_trusted_scanner("trivy") is None
 
 
 def test_service_pins_trusted_posix_path() -> None:
