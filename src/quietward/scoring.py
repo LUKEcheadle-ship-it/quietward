@@ -160,10 +160,8 @@ class DeterministicRiskScorer:
             if high_signal:
                 reasons.append("high_signal_markers=" + ",".join(high_signal[:8]))
             if high_signal and event.confidence >= 0.8:
-                before = score
                 score = max(score, 65.0)
-                if score > before:
-                    reasons.append("high_confidence_behavior_floor=65.0")
+                reasons.append("high_confidence_behavior_floor=65.0")
 
         failed = _integer_attribute(attrs, "failed_count", "failure_count", "attempt_count")
         if failed > 1:
@@ -178,6 +176,8 @@ class DeterministicRiskScorer:
             spray_bonus = min(22.0, 8.0 + 2.0 * log2(distinct_accounts))
             score += spray_bonus
             reasons.append(f"credential_spray_context={distinct_accounts}_accounts/{spray_attempts}_source_failures:+{spray_bonus:.1f}")
+            score = max(score, 45.0)
+            reasons.append("credential_spray_context_floor=45.0")
             if spray_attempts >= 32 and distinct_accounts >= 8 and event.confidence >= 0.8:
                 before = score
                 score = max(score, 65.0)

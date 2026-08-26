@@ -7,46 +7,7 @@ from typing import Any, Iterable
 
 from .contracts import EventKind, SecurityEvent
 from .performance_store import PerformanceSentinelStore
-
-
-_SUPPRESSION_BYPASS_MARKERS = {
-    "credential_spray",
-    "credential_dumping",
-    "credential_theft",
-    "reverse_shell",
-    "web_shell",
-    "process_injection",
-    "document_spawned_interpreter",
-    "server_spawned_suspicious_shell",
-    "web_server_spawned_suspicious_shell",
-    "ransomware_recovery_inhibition",
-    "event_log_clearing",
-    "dangerous_container_config",
-    "docker_socket_mount",
-    "host_root_mount",
-}
-
-
-def _event_markers(event: SecurityEvent) -> set[str]:
-    result: set[str] = set()
-    for key in (
-        "suspicious_markers",
-        "risk_markers",
-        "security_markers",
-        "owner_suspicious_markers",
-    ):
-        raw = event.attributes.get(key)
-        if raw is None:
-            continue
-        values = (raw,) if isinstance(raw, str) else raw
-        try:
-            for item in values:
-                marker = str(item).strip().casefold().replace("-", "_").replace(" ", "_")
-                if marker:
-                    result.add(marker)
-        except TypeError:
-            continue
-    return result
+from .suppression import event_bypasses_suppression
 
 
 class ProductSentinelStore(PerformanceSentinelStore):
@@ -245,12 +206,7 @@ class ProductSentinelStore(PerformanceSentinelStore):
     def _bypasses_suppression(self, event: SecurityEvent) -> bool:
         if event.kind in self.UNSUPPRESSIBLE_KINDS:
             return True
-        if _event_markers(event) & _SUPPRESSION_BYPASS_MARKERS:
-            return True
-        return bool(
-            event.kind is EventKind.AUTH_FAILURE
-            and event.attributes.get("credential_spray_candidate") is True
-        )
+        return event_bypasses_suppression(event)
 
     def filter_suppressed_events(
         self,

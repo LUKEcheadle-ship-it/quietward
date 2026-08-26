@@ -31,6 +31,7 @@ FORBIDDEN_PARTS = {
     "malware-samples",
     "quarantine",
     "qualification",
+    "quietward.egg-info",
 }
 PRIVATE_ONLY_PATHS = {
     Path("NOTICE"),

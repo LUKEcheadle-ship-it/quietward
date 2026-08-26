@@ -31,6 +31,7 @@ from .pipeline import SentinelPipeline
 from .scanners import ScannerExecutor
 from .source_aware_lifecycle import SourceAwareIncidentLifecycleRepository
 from .storage import PersistResult, SentinelStore
+from .suppression import partition_for_suppression
 
 
 def _atomic_json(path: Path, value: dict[str, Any]) -> None:
@@ -320,7 +321,12 @@ class SentinelService:
 
         coverage = coverage_report(coverage_domains)
         all_events = [*collector_batch.events, *scanner_events, *integrity_events, *extra_events]
-        kept, suppressed = self.store.filter_suppressed_events(all_events, now=started)
+        bypass, suppression_eligible = partition_for_suppression(all_events)
+        kept, suppressed = self.store.filter_suppressed_events(
+            suppression_eligible,
+            now=started,
+        )
+        kept = [*bypass, *kept]
         batch = CollectionBatch(collector_batch.snapshot, tuple(kept))
         report = self.pipeline.analyze(kept)
         completed = self.clock()

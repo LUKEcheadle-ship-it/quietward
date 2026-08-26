@@ -416,6 +416,8 @@ def _persistence_markers(category: str, command: str, account: str) -> tuple[str
     lowered = command.casefold()
     if any(token in lowered for token in ("\\appdata\\", "\\temp\\", "\\downloads\\")):
         markers.add("user_writable_target")
+    if any(token in lowered for token in ("http://", "https://", "ftp://", "\\\\")):
+        markers.add("network_target")
     if any(token in lowered for token in ("powershell", "pwsh", "mshta", "rundll32", "regsvr32", "wscript", "cscript")):
         markers.add("unexpected_interpreter")
     normalized_account = account.casefold()

@@ -24,7 +24,7 @@ def bundled_model_path() -> Path:
     return Path(
         str(
             files("quietward.model_artifacts").joinpath(
-                "sentinel_priority_tiny_v1.json"
+                "quietward_priority_tiny_v1.json"
             )
         )
     )

@@ -277,9 +277,15 @@ class IncidentCorrelator:
             has_high_signal = any(_event_is_high_signal(item) for item in window)
             high_signal_markers = tuple(sorted({marker for item in window for marker in (_event_markers(item) & _HIGH_SIGNAL_MARKERS)}))
             process_network_matches = _process_network_matches(window)
+            execution_network_only = phases == {"execution", "network"}
             qualifies = (
                 (len(phases) >= 3 and max_score >= 25.0)
-                or (len(phases) >= 2 and has_high_signal and max_score >= 65.0)
+                or (
+                    len(phases) >= 2
+                    and has_high_signal
+                    and max_score >= 65.0
+                    and (not execution_network_only or bool(process_network_matches))
+                )
                 or (len(phases) >= 2 and bool(process_network_matches) and max_score >= 50.0)
             )
             if not qualifies or len({item.subject for item in window}) < 2:

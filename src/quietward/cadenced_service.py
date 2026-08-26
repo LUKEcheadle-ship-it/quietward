@@ -28,6 +28,7 @@ from .performance_service import PerformanceSentinelService
 from .process_metrics import process_resource_snapshot
 from .runtime_metrics import RuntimeMetrics
 from .service import ServiceCycleResult
+from .suppression import partition_for_suppression
 
 
 class CadencedPerformanceSentinelService(PerformanceSentinelService):
@@ -265,7 +266,12 @@ class CadencedPerformanceSentinelService(PerformanceSentinelService):
             *extra_events,
         ]
         phase = time.perf_counter()
-        kept, suppressed = self.store.filter_suppressed_events(all_events, now=started)
+        bypass, suppression_eligible = partition_for_suppression(all_events)
+        kept, suppressed = self.store.filter_suppressed_events(
+            suppression_eligible,
+            now=started,
+        )
+        kept = [*bypass, *kept]
         phases["suppression"] = self._elapsed_ms(phase)
 
         batch = CollectionBatch(collector_batch.snapshot, tuple(kept))

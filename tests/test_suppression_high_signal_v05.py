@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from types import SimpleNamespace
-
 from quietward.collectors.models import CollectionBatch, CollectorSnapshot
+from quietward.config import SentinelConfig
 from quietward.contracts import AnalysisReport, EventKind, SecurityEvent
 from quietward.service import QuietWardService
 from quietward.storage import PersistResult
@@ -88,9 +87,21 @@ class _Scanners:
 def _service(event: SecurityEvent, tmp_path):
     store = _Store()
     pipeline = _Pipeline()
-    config = SimpleNamespace(
-        scanners=(),
-        service=SimpleNamespace(health_path=tmp_path / "health.json"),
+    config = SentinelConfig.from_dict(
+        {
+            "state_dir": str(tmp_path.resolve()),
+            "collector": {
+                "include_processes": False,
+                "include_listening_sockets": False,
+                "include_outbound_connections": False,
+                "include_auth_journal": False,
+                "include_docker": False,
+                "include_persistence": False,
+                "sensitive_files": [],
+            },
+            "dashboard": {"enabled": False},
+            "self_integrity": {"enabled": False},
+        }
     )
     service = QuietWardService(
         config,

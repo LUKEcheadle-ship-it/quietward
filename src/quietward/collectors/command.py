@@ -56,6 +56,9 @@ _POSIX_EXECUTABLE_ROOTS = (
     Path("/sbin"),
     Path("/bin"),
 )
+_TRUSTED_POSIX_PATH = os.pathsep.join(
+    str(root) for root in _POSIX_EXECUTABLE_ROOTS
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,7 +125,7 @@ def _trusted_environment(executable: Path) -> dict[str, str]:
             raise ValueError("trusted Windows directories are unavailable")
         return trusted_windows_environment(executable, paths)
     return {
-        "PATH": os.pathsep.join(str(root) for root in _POSIX_EXECUTABLE_ROOTS),
+        "PATH": _TRUSTED_POSIX_PATH,
         "LANG": "C.UTF-8",
         "LC_ALL": "C.UTF-8",
     }
@@ -241,7 +244,7 @@ class ReadOnlyCommandRunner:
         executable = Path(resolved)
         if not executable.is_absolute() or not _regular_non_link_executable(executable):
             raise ValueError("command executable must be a trusted regular absolute file")
-        command = (str(executable), *normalized[1:])
+        command = (resolved, *normalized[1:])
         env = _trusted_environment(executable) if self._production_resolver else _injected_environment(executable)
         try:
             completed = subprocess.run(

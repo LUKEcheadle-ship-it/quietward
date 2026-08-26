@@ -4,7 +4,7 @@ import hashlib
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Sequence
 
 from ..contracts import EventKind, SecurityEvent
@@ -63,7 +63,8 @@ class DebianCollectorConfig:
         ):
             raise ValueError("collector limits must be positive")
         for path in self.sensitive_files:
-            if not path.is_absolute():
+            posix_path = PurePosixPath(str(path).replace("\\", "/"))
+            if not path.is_absolute() and not posix_path.is_absolute():
                 raise ValueError(f"sensitive file must be absolute: {path}")
 
 

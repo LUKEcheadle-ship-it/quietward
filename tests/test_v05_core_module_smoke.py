@@ -57,7 +57,7 @@ class V05CoreModuleSmokeTests(unittest.TestCase):
         self.assertEqual(__version__, "0.5.0a1")
         model = bundled_model_path()
         self.assertTrue(model.is_file(), model)
-        self.assertEqual(model.name, "sentinel_priority_tiny_v1.json")
+        self.assertEqual(model.name, "quietward_priority_tiny_v1.json")
 
     def test_performance_budget_contract_accepts_approved_shape(self) -> None:
         metrics = {
