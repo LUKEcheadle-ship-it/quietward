@@ -43,7 +43,6 @@ def main() -> int:
     suite = unittest.defaultTestLoader.discover(
         str(ROOT / "tests"),
         pattern="test_response_handoff_contract.py",
-        top_level_dir=str(ROOT),
     )
     result = unittest.TextTestRunner(verbosity=2).run(suite)
     if not result.wasSuccessful():
