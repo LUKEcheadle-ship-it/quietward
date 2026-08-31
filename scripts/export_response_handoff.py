@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import platform
 import stat
 import sys
 from datetime import datetime, timezone
@@ -92,6 +93,7 @@ def main() -> int:
         events,
         privacy_identity=identity,
         source_version=__version__,
+        operating_system=platform.system(),
     )
     output = {
         "format": "quietward-response-handoff-v1",
