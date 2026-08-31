@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import json
+import unittest
 from datetime import datetime, timezone
 from uuid import UUID
-
-import pytest
 
 from quietward.contracts import (
     ActionProposal,
@@ -77,71 +76,78 @@ def _fixture(*, executable: bool = False, host_id: str = "host-01"):
     return report, event, sensitive_subject
 
 
-def test_handoff_is_response_compatible_and_does_not_leak_raw_subject() -> None:
-    report, event, sensitive_subject = _fixture()
-    identity = PrivacyIdentity(b"k" * 32)
+class ResponseHandoffContractTests(unittest.TestCase):
+    def test_handoff_is_response_compatible_and_does_not_leak_raw_subject(self) -> None:
+        report, event, sensitive_subject = _fixture()
+        identity = PrivacyIdentity(b"k" * 32)
 
-    payloads = build_response_handoff_events(
-        report,
-        [event],
-        privacy_identity=identity,
-        source_version="0.6.0-alpha.1",
-    )
-
-    assert len(payloads) == 1
-    payload = payloads[0]
-    UUID(payload["event_id"])
-    assert payload["schema_version"] == "1.0"
-    assert payload["source"] == "quietward"
-    assert payload["host_id"] == "host-01"
-    assert payload["category"] == "execution"
-    assert payload["severity"] == "high"
-    assert payload["metadata"]["observation_only_source"] is True
-    assert payload["metadata"]["executable_authority"] is False
-    assert payload["metadata"]["investigation_hints"] == [
-        "host_health",
-        "process_inventory",
-    ]
-
-    serialized = json.dumps(payload, sort_keys=True)
-    assert sensitive_subject not in serialized
-    assert "/usr/bin/python3" not in serialized
-    assert "action_proposals" not in serialized
-    assert '"target"' not in serialized
-    assert payload["evidence"]["subject_hmac_sha256"] == identity.identify_scoped(
-        sensitive_subject,
-        "response-subject-v1",
-    )
-    assert payload["evidence"]["correlation_signal_codes"] == [
-        "cross_signal_actor_bonus",
-        "process_network_corroboration",
-    ]
-
-
-def test_handoff_event_id_and_subject_identity_are_deterministic() -> None:
-    report, event, _ = _fixture()
-    identity = PrivacyIdentity(b"k" * 32)
-    first = build_response_handoff_events(report, [event], privacy_identity=identity)[0]
-    second = build_response_handoff_events(report, [event], privacy_identity=identity)[0]
-    assert first["event_id"] == second["event_id"]
-    assert first["evidence"]["subject_hmac_sha256"] == second["evidence"]["subject_hmac_sha256"]
-
-
-def test_handoff_fails_closed_if_quietward_claims_executable_authority() -> None:
-    report, event, _ = _fixture(executable=True)
-    with pytest.raises(ValueError, match="executable QuietWard proposals"):
-        build_response_handoff_events(
+        payloads = build_response_handoff_events(
             report,
             [event],
-            privacy_identity=PrivacyIdentity(b"k" * 32),
+            privacy_identity=identity,
+            source_version="0.6.0-alpha.1",
+            operating_system="Linux",
         )
 
-
-def test_handoff_rejects_response_incompatible_host_ids() -> None:
-    report, event, _ = _fixture(host_id="host id with spaces")
-    with pytest.raises(ValueError, match="host_id"):
-        build_response_handoff_events(
-            report,
-            [event],
-            privacy_identity=PrivacyIdentity(b"k" * 32),
+        self.assertEqual(len(payloads), 1)
+        payload = payloads[0]
+        UUID(payload["event_id"])
+        self.assertEqual(payload["schema_version"], "1.0")
+        self.assertEqual(payload["source"], "quietward")
+        self.assertEqual(payload["host_id"], "host-01")
+        self.assertEqual(payload["category"], "execution")
+        self.assertEqual(payload["severity"], "high")
+        self.assertIs(payload["metadata"]["observation_only_source"], True)
+        self.assertIs(payload["metadata"]["executable_authority"], False)
+        self.assertEqual(payload["metadata"]["operating_system"], "Linux")
+        self.assertEqual(
+            payload["metadata"]["investigation_hints"],
+            ["host_health", "process_inventory"],
         )
+
+        serialized = json.dumps(payload, sort_keys=True)
+        self.assertNotIn(sensitive_subject, serialized)
+        self.assertNotIn("/usr/bin/python3", serialized)
+        self.assertNotIn("action_proposals", serialized)
+        self.assertNotIn('"target"', serialized)
+        self.assertEqual(
+            payload["evidence"]["subject_hmac_sha256"],
+            identity.identify_scoped(sensitive_subject, "response-subject-v1"),
+        )
+        self.assertEqual(
+            payload["evidence"]["correlation_signal_codes"],
+            ["cross_signal_actor_bonus", "process_network_corroboration"],
+        )
+
+    def test_handoff_event_id_and_subject_identity_are_deterministic(self) -> None:
+        report, event, _ = _fixture()
+        identity = PrivacyIdentity(b"k" * 32)
+        first = build_response_handoff_events(report, [event], privacy_identity=identity)[0]
+        second = build_response_handoff_events(report, [event], privacy_identity=identity)[0]
+        self.assertEqual(first["event_id"], second["event_id"])
+        self.assertEqual(
+            first["evidence"]["subject_hmac_sha256"],
+            second["evidence"]["subject_hmac_sha256"],
+        )
+
+    def test_handoff_fails_closed_if_quietward_claims_executable_authority(self) -> None:
+        report, event, _ = _fixture(executable=True)
+        with self.assertRaisesRegex(ValueError, "executable QuietWard proposals"):
+            build_response_handoff_events(
+                report,
+                [event],
+                privacy_identity=PrivacyIdentity(b"k" * 32),
+            )
+
+    def test_handoff_rejects_response_incompatible_host_ids(self) -> None:
+        report, event, _ = _fixture(host_id="host id with spaces")
+        with self.assertRaisesRegex(ValueError, "host_id"):
+            build_response_handoff_events(
+                report,
+                [event],
+                privacy_identity=PrivacyIdentity(b"k" * 32),
+            )
+
+
+if __name__ == "__main__":
+    unittest.main()
