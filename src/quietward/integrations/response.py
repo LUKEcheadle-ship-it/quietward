@@ -102,6 +102,19 @@ def _investigation_hints(category: str) -> list[str]:
     return list(dict.fromkeys(hints))
 
 
+def _coarse_os_family(value: str | None) -> str | None:
+    text = (value or "").strip().casefold()
+    if not text:
+        return None
+    if "windows" in text:
+        return "Windows"
+    if "linux" in text:
+        return "Linux"
+    if "darwin" in text or "macos" in text or "mac os" in text:
+        return "Darwin"
+    return "Unknown"
+
+
 def _validate_observation_only(report: AnalysisReport) -> None:
     if report.actions_executed != 0:
         raise ValueError("Response handoff requires an observation-only QuietWard report")
@@ -115,16 +128,19 @@ def build_response_handoff_events(
     *,
     privacy_identity: PrivacyIdentity,
     source_version: str | None = None,
+    operating_system: str | None = None,
 ) -> list[dict[str, Any]]:
     """Build sanitized Response EventCreate payloads from QuietWard findings.
 
     This is a one-way data contract only. It does not make network requests, poll
     for actions, execute proposals, expose raw finding subjects, or grant Response
-    authority back into the QuietWard process.
+    authority back into the QuietWard process. Only a coarse OS family may cross
+    the boundary so Response can enforce platform-specific diagnostic policy.
     """
     _validate_observation_only(report)
     by_id = {event.event_id: event for event in events}
     payloads: list[dict[str, Any]] = []
+    os_family = _coarse_os_family(operating_system)
 
     for finding in report.findings:
         if not _RESPONSE_HOST_ID.fullmatch(finding.host_id):
@@ -191,6 +207,7 @@ def build_response_handoff_events(
                     "observation_only_source": True,
                     "executable_authority": False,
                     "investigation_hints": _investigation_hints(category),
+                    "operating_system": os_family,
                 },
             }
         )
