@@ -95,11 +95,16 @@ def main() -> int:
         source_version=__version__,
         operating_system=platform.system(),
     )
+    host_ids = sorted({item["host_id"] for item in payloads})
+    if len(host_ids) > 1:
+        raise ValueError(
+            "a Response handoff file may contain findings for only one host because transport credentials are host-bound"
+        )
     output = {
         "format": "quietward-response-handoff-v1",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "source_version": __version__,
-        "host_ids": sorted({item["host_id"] for item in payloads}),
+        "host_ids": host_ids,
         "events": payloads,
         "safety": {
             "observation_only_source": True,
