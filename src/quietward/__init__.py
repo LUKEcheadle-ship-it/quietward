@@ -36,4 +36,4 @@ __all__ = [
     "parse_clamav_output", "parse_debsecan_simple", "parse_trivy_json", "parse_yara_output",
 ]
 
-__version__ = "0.5.0a1"
+__version__ = "0.6.0a1"
