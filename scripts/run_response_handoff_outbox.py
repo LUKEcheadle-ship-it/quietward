@@ -11,6 +11,7 @@ import sqlite3
 import stat
 import sys
 import time
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -241,14 +242,18 @@ def _save_state(outbox: Path, cycle_id: int, chain_hash: str) -> None:
     )
 
 
-def _open_read_only(database: Path) -> sqlite3.Connection:
+@contextmanager
+def _open_read_only(database: Path):
     resolved = database.expanduser().resolve()
     if not resolved.is_file():
         raise OutboxError(f"QuietWard database does not exist: {resolved}")
     connection = sqlite3.connect(f"file:{resolved.as_posix()}?mode=ro", uri=True, timeout=10.0)
-    connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA query_only=ON")
-    return connection
+    try:
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA query_only=ON")
+        yield connection
+    finally:
+        connection.close()
 
 
 def _metadata(connection: sqlite3.Connection, key: str) -> str | None:
