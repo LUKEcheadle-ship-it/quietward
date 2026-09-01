@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import platform
+import re
 import sqlite3
 import stat
 import sys
@@ -35,6 +37,7 @@ from quietward.privacy_identity import PrivacyIdentity
 
 MAX_HANDOFF_BYTES = 2_000_000
 DEFAULT_MAX_PENDING_FILES = 2048
+_CHAIN_HASH = re.compile(r"^[0-9a-f]{64}$")
 
 
 class OutboxError(RuntimeError):
@@ -133,6 +136,29 @@ def _private_directory(path: Path) -> Path:
     return resolved
 
 
+def _read_existing_regular_file(path: Path) -> bytes:
+    try:
+        info = path.lstat()
+    except OSError as exc:
+        raise OutboxError(f"existing handoff is unavailable: {path.name}") from exc
+    if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
+        raise OutboxError(f"existing handoff is not a normal file: {path.name}")
+    if info.st_size > MAX_HANDOFF_BYTES:
+        raise OutboxError(f"existing handoff exceeds the bounded file-size limit: {path.name}")
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise OutboxError(f"existing handoff could not be opened safely: {path.name}") from exc
+    try:
+        data = os.read(descriptor, MAX_HANDOFF_BYTES + 1)
+    finally:
+        os.close(descriptor)
+    if len(data) > MAX_HANDOFF_BYTES:
+        raise OutboxError(f"existing handoff exceeds the bounded file-size limit: {path.name}")
+    return data
+
+
 def _atomic_json(path: Path, value: dict[str, Any], *, exclusive: bool) -> None:
     data = (json.dumps(value, sort_keys=True, indent=2) + "\n").encode("utf-8")
     if len(data) > MAX_HANDOFF_BYTES:
@@ -153,7 +179,7 @@ def _atomic_json(path: Path, value: dict[str, Any], *, exclusive: bool) -> None:
         os.close(descriptor)
     try:
         if exclusive and path.exists():
-            existing = path.read_bytes()
+            existing = _read_existing_regular_file(path)
             if existing != data:
                 raise OutboxError(f"existing handoff changed unexpectedly: {path.name}")
             temporary.unlink()
@@ -175,20 +201,29 @@ def _state_path(outbox: Path) -> Path:
     return outbox / ".quietward-response-outbox-state.json"
 
 
-def _load_state(outbox: Path) -> int:
+def _load_state(outbox: Path) -> tuple[int, str | None, bool]:
     path = _state_path(outbox)
     if not path.exists():
-        return 0
+        return 0, None, False
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise OutboxError("Response handoff outbox state is unreadable") from exc
-    if not isinstance(value, dict):
+    if not isinstance(value, dict) or value.get("format") != "quietward-response-outbox-state-v1":
         raise OutboxError("Response handoff outbox state is invalid")
+    if value.get("network_requests_performed") != 0 or value.get("actions_executed") != 0:
+        raise OutboxError("Response handoff outbox state violates the observation-only contract")
     cycle_id = value.get("last_cycle_id", 0)
     if not isinstance(cycle_id, int) or isinstance(cycle_id, bool) or cycle_id < 0:
         raise OutboxError("Response handoff outbox state cycle is invalid")
-    return cycle_id
+    chain_hash = value.get("last_chain_hash")
+    if cycle_id == 0:
+        if chain_hash not in {None, ""}:
+            raise OutboxError("Response handoff outbox state has a hash without a cycle")
+        return 0, None, True
+    if not isinstance(chain_hash, str) or not _CHAIN_HASH.fullmatch(chain_hash):
+        raise OutboxError("Response handoff outbox state chain hash is invalid")
+    return cycle_id, chain_hash, True
 
 
 def _save_state(outbox: Path, cycle_id: int, chain_hash: str) -> None:
@@ -214,6 +249,92 @@ def _open_read_only(database: Path) -> sqlite3.Connection:
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA query_only=ON")
     return connection
+
+
+def _metadata(connection: sqlite3.Connection, key: str) -> str | None:
+    try:
+        row = connection.execute("SELECT value FROM metadata WHERE key=?", (key,)).fetchone()
+    except sqlite3.OperationalError as exc:
+        raise OutboxError("QuietWard metadata table is unavailable") from exc
+    return str(row[0]) if row is not None else None
+
+
+def _verify_evidence_chain(connection: sqlite3.Connection) -> tuple[int, str, int, str | None]:
+    anchor_cycle_raw = _metadata(connection, "evidence_chain_anchor_cycle")
+    anchor_hash_raw = _metadata(connection, "evidence_chain_anchor_hash")
+    if (anchor_cycle_raw is None) != (anchor_hash_raw is None):
+        raise OutboxError("QuietWard evidence-chain anchor metadata is incomplete")
+    if anchor_cycle_raw is None:
+        anchor_cycle = 0
+        anchor_hash = "0" * 64
+    else:
+        try:
+            anchor_cycle = int(anchor_cycle_raw)
+        except ValueError as exc:
+            raise OutboxError("QuietWard evidence-chain anchor cycle is invalid") from exc
+        if anchor_cycle < 0 or not isinstance(anchor_hash_raw, str) or not _CHAIN_HASH.fullmatch(anchor_hash_raw):
+            raise OutboxError("QuietWard evidence-chain anchor is invalid")
+        anchor_hash = anchor_hash_raw
+
+    previous = anchor_hash
+    maximum_cycle = anchor_cycle
+    last_hash: str | None = None
+    try:
+        rows = connection.execute(
+            "SELECT cycle_id,previous_hash,payload_hash,chain_hash,payload_json FROM evidence_chain ORDER BY cycle_id"
+        )
+    except sqlite3.OperationalError as exc:
+        raise OutboxError("QuietWard evidence-chain schema is unavailable") from exc
+    for row in rows:
+        cycle_id = int(row["cycle_id"])
+        payload = str(row["payload_json"])
+        payload_hash = hashlib.sha256(payload.encode()).hexdigest()
+        expected_chain_hash = hashlib.sha256(
+            f"{previous}|{payload_hash}|{cycle_id}".encode()
+        ).hexdigest()
+        if str(row["previous_hash"]) != previous:
+            raise OutboxError(f"QuietWard evidence chain failed at cycle {cycle_id}: previous hash mismatch")
+        if str(row["payload_hash"]) != payload_hash:
+            raise OutboxError(f"QuietWard evidence chain failed at cycle {cycle_id}: payload hash mismatch")
+        if str(row["chain_hash"]) != expected_chain_hash:
+            raise OutboxError(f"QuietWard evidence chain failed at cycle {cycle_id}: chain hash mismatch")
+        previous = expected_chain_hash
+        last_hash = expected_chain_hash
+        maximum_cycle = max(maximum_cycle, cycle_id)
+    return anchor_cycle, anchor_hash, maximum_cycle, last_hash
+
+
+def _resolve_start_cycle(
+    connection: sqlite3.Connection,
+    *,
+    anchor_cycle: int,
+    anchor_hash: str,
+    maximum_cycle: int,
+    state_cycle: int,
+    state_hash: str | None,
+    state_exists: bool,
+) -> tuple[int, str | None]:
+    if not state_exists:
+        return anchor_cycle, anchor_hash if anchor_cycle else None
+    if state_cycle > maximum_cycle:
+        raise OutboxError("outbox state is ahead of the QuietWard evidence chain")
+    if state_cycle < anchor_cycle:
+        raise OutboxError("outbox state fell behind the retained QuietWard evidence-chain anchor")
+    if state_cycle == 0:
+        return 0, None
+    if state_cycle == anchor_cycle:
+        expected = anchor_hash
+    else:
+        row = connection.execute(
+            "SELECT chain_hash FROM evidence_chain WHERE cycle_id=?",
+            (state_cycle,),
+        ).fetchone()
+        if row is None:
+            raise OutboxError("outbox state cycle is missing from the retained QuietWard evidence chain")
+        expected = str(row[0])
+    if state_hash != expected:
+        raise OutboxError("outbox state chain hash does not match QuietWard evidence")
+    return state_cycle, state_hash
 
 
 def _bundle(
@@ -267,15 +388,21 @@ def export_once(
     if not 1 <= max_pending_files <= 10000:
         raise OutboxError("max pending files must be between 1 and 10000")
     resolved_outbox = _private_directory(outbox)
-    last_cycle = _load_state(resolved_outbox)
+    state_cycle, state_hash, state_exists = _load_state(resolved_outbox)
     pending = len(list(resolved_outbox.glob("cycle-*.json")))
     exported = skipped = advanced = 0
 
     with _open_read_only(database) as connection:
-        maximum_row = connection.execute("SELECT COALESCE(MAX(cycle_id), 0) AS value FROM evidence_chain").fetchone()
-        maximum_cycle = int(maximum_row["value"] if maximum_row is not None else 0)
-        if last_cycle > maximum_cycle:
-            raise OutboxError("outbox state is ahead of the QuietWard evidence chain")
+        anchor_cycle, anchor_hash, maximum_cycle, _ = _verify_evidence_chain(connection)
+        last_cycle, _ = _resolve_start_cycle(
+            connection,
+            anchor_cycle=anchor_cycle,
+            anchor_hash=anchor_hash,
+            maximum_cycle=maximum_cycle,
+            state_cycle=state_cycle,
+            state_hash=state_hash,
+            state_exists=state_exists,
+        )
         rows = connection.execute(
             "SELECT cycle_id,chain_hash,payload_json FROM evidence_chain WHERE cycle_id>? ORDER BY cycle_id",
             (last_cycle,),
