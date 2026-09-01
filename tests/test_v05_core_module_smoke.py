@@ -54,7 +54,7 @@ class V05CoreModuleSmokeTests(unittest.TestCase):
                 self.assertIsNotNone(importlib.import_module(name))
 
     def test_release_version_and_bundled_model_match(self) -> None:
-        self.assertEqual(__version__, "0.5.0a1")
+        self.assertEqual(__version__, "0.6.0a1")
         model = bundled_model_path()
         self.assertTrue(model.is_file(), model)
         self.assertEqual(model.name, "quietward_priority_tiny_v1.json")
