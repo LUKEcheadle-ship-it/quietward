@@ -73,12 +73,12 @@ def _fixture(*, executable: bool = False, host_id: str = "host-01"):
         action_proposals=(proposal,),
         actions_executed=0,
     )
-    return report, event, sensitive_subject
+    return report, event, finding, sensitive_subject
 
 
 class ResponseHandoffContractTests(unittest.TestCase):
-    def test_handoff_is_response_compatible_and_does_not_leak_raw_subject(self) -> None:
-        report, event, sensitive_subject = _fixture()
+    def test_handoff_is_response_compatible_and_does_not_leak_raw_identifiers(self) -> None:
+        report, event, finding, sensitive_subject = _fixture()
         identity = PrivacyIdentity(b"k" * 32)
 
         payloads = build_response_handoff_events(
@@ -108,6 +108,7 @@ class ResponseHandoffContractTests(unittest.TestCase):
         serialized = json.dumps(payload, sort_keys=True)
         self.assertNotIn(sensitive_subject, serialized)
         self.assertNotIn("/usr/bin/python3", serialized)
+        self.assertNotIn(finding.finding_id, serialized)
         self.assertNotIn("action_proposals", serialized)
         self.assertNotIn('"target"', serialized)
         self.assertEqual(
@@ -115,12 +116,16 @@ class ResponseHandoffContractTests(unittest.TestCase):
             identity.identify_scoped(sensitive_subject, "response-subject-v1"),
         )
         self.assertEqual(
+            payload["metadata"]["quietward_finding_hmac_sha256"],
+            identity.identify_scoped(finding.finding_id, "response-finding-v1"),
+        )
+        self.assertEqual(
             payload["evidence"]["correlation_signal_codes"],
             ["cross_signal_actor_bonus", "process_network_corroboration"],
         )
 
-    def test_handoff_event_id_and_subject_identity_are_deterministic(self) -> None:
-        report, event, _ = _fixture()
+    def test_handoff_event_id_and_keyed_identities_are_deterministic(self) -> None:
+        report, event, finding, _ = _fixture()
         identity = PrivacyIdentity(b"k" * 32)
         first = build_response_handoff_events(report, [event], privacy_identity=identity)[0]
         second = build_response_handoff_events(report, [event], privacy_identity=identity)[0]
@@ -129,9 +134,13 @@ class ResponseHandoffContractTests(unittest.TestCase):
             first["evidence"]["subject_hmac_sha256"],
             second["evidence"]["subject_hmac_sha256"],
         )
+        self.assertEqual(
+            first["metadata"]["quietward_finding_hmac_sha256"],
+            identity.identify_scoped(finding.finding_id, "response-finding-v1"),
+        )
 
     def test_handoff_fails_closed_if_quietward_claims_executable_authority(self) -> None:
-        report, event, _ = _fixture(executable=True)
+        report, event, _, _ = _fixture(executable=True)
         with self.assertRaisesRegex(ValueError, "executable QuietWard proposals"):
             build_response_handoff_events(
                 report,
@@ -140,7 +149,7 @@ class ResponseHandoffContractTests(unittest.TestCase):
             )
 
     def test_handoff_rejects_response_incompatible_host_ids(self) -> None:
-        report, event, _ = _fixture(host_id="host id with spaces")
+        report, event, _, _ = _fixture(host_id="host id with spaces")
         with self.assertRaisesRegex(ValueError, "host_id"):
             build_response_handoff_events(
                 report,
