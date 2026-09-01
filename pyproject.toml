@@ -19,7 +19,7 @@ release = ["pytest>=8,<9"]
 quietward = "quietward.console:main"
 
 [tool.setuptools]
-package-dir = {"" = "src"]
+package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
