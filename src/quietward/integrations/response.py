@@ -12,6 +12,7 @@ from ..privacy_identity import PrivacyIdentity
 RESPONSE_CONTEXT_VERSION = "1.0"
 _RESPONSE_HOST_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 _SAFE_REASON_CODE = re.compile(r"^[a-z0-9_.:+-]{1,64}$")
+_CHAIN_HASH = re.compile(r"^[0-9a-f]{64}$")
 
 _CATEGORY_BY_KIND: dict[EventKind, str] = {
     EventKind.MALWARE_SIGNATURE: "malware",
@@ -115,6 +116,23 @@ def _coarse_os_family(value: str | None) -> str | None:
     return "Unknown"
 
 
+def _validate_provenance(
+    source_cycle_id: int | None,
+    source_chain_hash: str | None,
+) -> tuple[int | None, str | None]:
+    if source_cycle_id is None and source_chain_hash is None:
+        return None, None
+    if (
+        not isinstance(source_cycle_id, int)
+        or isinstance(source_cycle_id, bool)
+        or source_cycle_id <= 0
+    ):
+        raise ValueError("Response handoff source cycle id is invalid")
+    if not isinstance(source_chain_hash, str) or not _CHAIN_HASH.fullmatch(source_chain_hash):
+        raise ValueError("Response handoff source evidence-chain hash is invalid")
+    return source_cycle_id, source_chain_hash
+
+
 def _validate_observation_only(report: AnalysisReport) -> None:
     if report.actions_executed != 0:
         raise ValueError("Response handoff requires an observation-only QuietWard report")
@@ -129,15 +147,22 @@ def build_response_handoff_events(
     privacy_identity: PrivacyIdentity,
     source_version: str | None = None,
     operating_system: str | None = None,
+    source_cycle_id: int | None = None,
+    source_chain_hash: str | None = None,
 ) -> list[dict[str, Any]]:
     """Build sanitized Response EventCreate payloads from QuietWard findings.
 
     This is a one-way data contract only. It does not make network requests, poll
     for actions, execute proposals, expose raw finding subjects, or grant Response
-    authority back into the QuietWard process. Only a coarse OS family may cross
-    the boundary so Response can enforce platform-specific diagnostic policy.
+    authority back into the QuietWard process. A coarse OS family may cross the
+    boundary so Response can enforce platform policy. Automated outbox handoffs may
+    additionally carry the exact QuietWard evidence-chain cycle/hash for provenance.
     """
     _validate_observation_only(report)
+    provenance_cycle, provenance_hash = _validate_provenance(
+        source_cycle_id,
+        source_chain_hash,
+    )
     by_id = {event.event_id: event for event in events}
     payloads: list[dict[str, Any]] = []
     os_family = _coarse_os_family(operating_system)
@@ -208,6 +233,8 @@ def build_response_handoff_events(
                     "executable_authority": False,
                     "investigation_hints": _investigation_hints(category),
                     "operating_system": os_family,
+                    "quietward_source_cycle_id": provenance_cycle,
+                    "quietward_source_chain_hash": provenance_hash,
                 },
             }
         )
