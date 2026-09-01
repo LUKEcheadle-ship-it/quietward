@@ -129,12 +129,20 @@ class ResponseHandoffOutboxTests(unittest.TestCase):
             text = files[0].read_text(encoding="utf-8")
             self.assertNotIn(subject, text)
             self.assertNotIn("/usr/bin/python3", text)
+            self.assertNotIn("qwf-outbox-1", text)
             document = json.loads(text)
             self.assertEqual(document["source_cycle_id"], 2)
             self.assertEqual(document["source_chain_hash"], "b" * 64)
             self.assertIs(document["safety"]["observation_only_source"], True)
             self.assertIs(document["safety"]["executable_authority"], False)
             self.assertEqual(document["safety"]["actions_executed"], 0)
+            event = document["events"][0]
+            self.assertEqual(event["metadata"]["quietward_source_cycle_id"], 2)
+            self.assertEqual(event["metadata"]["quietward_source_chain_hash"], "b" * 64)
+            self.assertRegex(
+                event["metadata"]["quietward_finding_hmac_sha256"],
+                r"^[0-9a-f]{32}$",
+            )
 
             second = export_once(database, outbox, identity, max_pending_files=10)
             self.assertEqual(second["cycles_advanced"], 0)
