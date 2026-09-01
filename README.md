@@ -1,48 +1,98 @@
 # QuietWard
 
-QuietWard is an offline-first, observation-only cybersecurity monitor that explains suspicious host activity without silently changing the computer.
+**Local-first endpoint security that watches, explains, and preserves control.**
 
-## Release status
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-blue)
+![Mode](https://img.shields.io/badge/Mode-Observation--Only-success)
+![Version](https://img.shields.io/badge/Preview-0.6.0a1-orange)
 
-`v0.5.0-alpha.1` is the current **experimental alpha release candidate** on `release/v0.5.0-alpha.1`. Python package version: `0.5.0a1`. It is the project's largest architecture, performance, privacy, incident-lifecycle, and detection update so far.
+QuietWard is an offline-first, observation-only cybersecurity monitor designed to answer a simple question:
 
-The release candidate must complete exact-public-SHA platform/release qualification before tag/publication.
+> **What changed on this machine, why might it matter, and what evidence supports that conclusion?**
 
-Intended qualified platforms:
+It monitors host activity, correlates related signals into explainable findings, tracks incidents over time, and preserves signed local evidence — **without silently changing the computer or giving itself a remote-command surface**.
 
-- **Windows 11**
-- **Debian 12**
+![QuietWard Windows dashboard](docs/assets/quietward-windows-dashboard.png)
 
-Windows 10, macOS, and other Linux distributions have not completed independent v0.5 qualification. QuietWard is not a replacement for Microsoft Defender, enterprise EDR/MDR, or professional incident response.
+## Why QuietWard
 
-## What it does
+Most endpoint tools optimize for either visibility or control. QuietWard deliberately starts with visibility.
 
-QuietWard monitors processes, listening ports, persistence, selected sensitive files, authentication evidence, containers when available, Microsoft Defender context on Windows, and its own integrity. It correlates normalized changes into findings, tracks incident lifecycle over time, stores bounded local signed evidence, and presents the result in a read-only local dashboard.
+| Principle | QuietWard approach |
+| --- | --- |
+| **Local-first** | Analysis, evidence, dashboard, and state stay on the machine by default. |
+| **Observation-only** | No process termination, quarantine, firewall changes, host isolation, or arbitrary command execution. |
+| **Explainable** | Findings retain deterministic reasons and supporting evidence instead of producing opaque scores alone. |
+| **Privacy-conscious** | Identity-bearing authentication and network data use installation-keyed HMAC pseudonyms on supported paths. |
+| **Low-overhead** | FAST, STANDARD, DEEP, and MAINTENANCE cadences stagger expensive work and reduce unnecessary writes. |
+| **Tamper-evident** | Retained evidence is hash-chained and can be signed and independently verified. |
 
-## What v0.5 adds
+## What it watches
 
-- **Lower-overhead monitoring:** FAST, STANDARD, DEEP, and MAINTENANCE observation cadences stagger expensive work and keep the normal quiet path lightweight.
-- **Native Windows FAST path:** read-only Windows APIs provide fresh process/PID and listener inventory without launching PowerShell on normal quiet FAST cycles; the fixed allowlisted PowerShell path remains a fail-closed fallback/deeper-context path.
-- **Stable incident lifecycle:** findings are tracked as `new`, `recurring`, `changed`, and `resolved`, with source-aware resolution so skipped/not-due domains cannot create false absence.
-- **Cross-signal context:** bounded same-actor and multi-cycle context strengthens related evidence while guarding against PID reuse and generic-runtime over-correlation.
-- **Multi-stage detection:** bounded same-host cross-subject attack-chain correlation and process/network corroboration add context without authorizing host actions.
-- **Stronger deterministic behavior signals:** credential spray/dumping, reverse-shell behavior, process injection markers, Office/PDF-to-risky-interpreter ancestry, Linux web/server-to-suspicious-shell ancestry, ransomware recovery inhibition, event-log clearing, and dangerous container configurations.
-- **Stronger privacy:** authentication source addresses and optional outbound destinations use installation-keyed HMAC-SHA256 pseudonyms; corrected identity-bearing paths fail closed if the privacy key is unavailable.
-- **Safer suppression:** ordinary expected/suppressed noise remains reviewable, while explicit high-signal behavior bypasses ordinary suppression and contextual suppression fails closed when source-cycle evidence is unavailable.
-- **Lower-write persistence:** quiet healthy cycles reduce redundant writes inside bounded durability windows while security-bearing/degraded cycles remain immediately durable.
-- **Evidence efficiency:** incremental evidence verification is used between mandatory full retained-chain audits, with authoritative full fallback on mismatch.
-- **Verified warm restart:** recent established healthy signed state can stage heavier revalidation while FAST observation resumes immediately; unsafe/stale state cold-starts instead.
-- **Performance visibility:** CPU, RSS, phase latency, command count/time, persistence mode, and health-write mode are exposed to the local health/dashboard surfaces.
-- **Improved dashboard/supportability:** active incidents, lifecycle, monitoring coverage, evidence integrity, retention pressure, Defender/collector context, and explicit zero-action state are visible locally.
-- **Redacted incident export v2** and deterministic offline SPDX SBOM tooling.
+QuietWard combines multiple read-only host signals instead of treating each event in isolation:
 
-See `docs/releases/v0.5.0-alpha.1.md`, `docs/V05_REVIEW_GUIDE.md`, and `docs/V05_MARKETING_KIT.md`.
+- processes and parent/child behavior
+- listening sockets and optional outbound network context
+- persistence and account changes
+- selected sensitive-file integrity
+- authentication evidence
+- Docker/container security state when available
+- Microsoft Defender context on Windows
+- QuietWard's own integrity and evidence state
+
+Deterministic scoring and correlation cover high-signal patterns including credential spray/dumping, reverse-shell behavior, process injection markers, document-to-interpreter ancestry, suspicious Linux web/server shell ancestry, ransomware recovery inhibition, event-log clearing, dangerous container configuration, and corroborated multi-stage activity.
+
+## From detection to response
+
+QuietWard `0.6.0a1` can hand verified findings to **[QuietWard Response](https://github.com/LUKEcheadle-ship-it/quietward-response)** through a one-way, sanitized local bridge.
+
+```mermaid
+flowchart LR
+    A[Host activity] --> B[QuietWard observation]
+    B --> C[Deterministic analysis]
+    C --> D[Finding + signed evidence]
+    D --> E[Sanitized local handoff]
+    E --> F[QuietWard Response]
+```
+
+The bridge preserves the core security boundary:
+
+- QuietWard remains observation-only.
+- QuietWard holds no Response network credential.
+- raw finding subjects and internal finding IDs do not cross the handoff boundary.
+- retained evidence-chain provenance is verified before export.
+- malformed provenance, changed handoff files, outbox saturation, or executable authority fail closed.
+
+QuietWard and QuietWard Response can also operate independently.
+
+## Current preview
+
+**Version:** `0.6.0a1`
+
+The current `main` line contains the paired QuietWard/Response integration preview. The exact joint candidate passed the complete paired qualification gate on Linux and Windows runners before being promoted to `main`, including:
+
+- **441 QuietWard tests** with platform-appropriate skips
+- **12 focused handoff/privacy/integrity tests**
+- public-release audit
+- evidence-chain tamper checks
+- privacy and secret-key safety checks
+- live QuietWard → Response handoff and controlled diagnostic acceptance
+- confirmation that `actions_executed == 0` inside QuietWard
+
+The v0.6 line is still an experimental preview, not a replacement for Microsoft Defender, enterprise EDR/MDR, or professional incident response.
 
 ## Safety boundary
 
-QuietWard remains observation-only. It does not automatically quarantine or delete files, terminate processes or services, change firewall rules, isolate a host, execute arbitrary commands, upload telemetry, or perform automatic remediation.
+QuietWard does **not** automatically:
 
-QuietWard does not quarantine/delete files. This explicit release-contract wording is retained for automated safety verification.
+- quarantine or delete files
+- terminate processes or services
+- change firewall rules
+- isolate a host
+- execute shell / PowerShell / cmd commands
+- upload telemetry to a cloud service
+- perform autonomous remediation
 
 Release invariants:
 
@@ -53,29 +103,19 @@ cloud_upload == false
 public_listener == false
 ```
 
-The dashboard remains read-only and loopback-only by default. Models may explain or reprioritize bounded evidence but cannot authorize an action.
+The dashboard is read-only and loopback-only by default. Models may help explain or reprioritize bounded evidence, but they cannot authorize an action.
 
-## Privacy
+## Quick start
 
-Corrected v0.5 identity-bearing authentication and optional outbound network paths use installation-keyed HMAC-SHA256 pseudonyms. Raw authentication usernames and source/destination IP addresses are not persisted on these paths. Raw process command lines and full scanner output are not retained as durable finding evidence.
+### Windows
 
-See `docs/PRIVACY.md`.
-
-## Windows quick start
-
-Requirements:
-
-- Windows 11
-- Python 3.11 or newer
-- PowerShell
-
-After release approval, extract the verified source archive and run:
+Requirements: Windows 11, Python 3.11+, PowerShell.
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\install_windows.ps1
 ```
 
-Open the dashboard at `http://127.0.0.1:8765/` or run:
+Then:
 
 ```powershell
 quietward status --pretty
@@ -83,32 +123,30 @@ quietward open-dashboard --pretty
 quietward diagnose --pretty
 ```
 
-## Debian quick start
+Dashboard: `http://127.0.0.1:8765/`
+
+### Debian
 
 ```bash
 ./scripts/install_user_service.sh
 quietward status --config ~/.config/quietward/config.json --pretty
 ```
 
-## Release validation
+## Verify the project
 
-From the exact release checkout, run the complete migrated/public release gate:
+Run the complete release-validation path:
 
 ```bash
 python scripts/validate_migrated_release.py --pretty
 ```
 
-The gate runs the complete repository test suite, Python compilation, static observation-only safety audit, strict public-release audit, deterministic double release-bundle build, and independent archive verification.
-
-The dedicated v0.5 detection gate remains available as an additional focused check:
+Run the focused v0.6 Response-handoff safety gate:
 
 ```bash
-python scripts/verify_v05_detection.py
+python scripts/verify_v06_response_handoff.py
 ```
 
-The Windows release builder does **not** permit a skip-tests release candidate. It freezes the current HEAD, validates the release, performs deterministic double builds, verifies the final archive, and emits a SHA-256 checksum sidecar.
-
-Native Windows 11 and Debian 12 qualification must still pass on the exact public release SHA before the tag is published.
+The release tooling performs compilation, safety/public-release audits, deterministic packaging checks, and archive verification. Platform-specific release claims should only be made after the corresponding native qualification is complete.
 
 ## Export a redacted incident
 
@@ -119,25 +157,26 @@ quietward export FINDING_ID incident.md --format markdown
 
 Exports remain local and exclude analyst notes and raw sensitive identities according to the redaction contract.
 
-## Documentation
+## Explore the design
 
-Start with:
+- [`docs/releases/v0.6.0-alpha.1.md`](docs/releases/v0.6.0-alpha.1.md) — v0.6 preview
+- [`docs/FIRST_RUN.md`](docs/FIRST_RUN.md) — first run
+- [`docs/PRIVACY.md`](docs/PRIVACY.md) — privacy model
+- [`docs/SECURITY_MODEL.md`](docs/SECURITY_MODEL.md) — security boundary
+- [`docs/EVIDENCE_INTEGRITY.md`](docs/EVIDENCE_INTEGRITY.md) — evidence integrity
+- [`docs/V05_DETECTION_REGRESSION_MATRIX.md`](docs/V05_DETECTION_REGRESSION_MATRIX.md) — detection regression coverage
 
-- `docs/FIRST_RUN.md`
-- `docs/WINDOWS.md`
-- `docs/releases/v0.5.0-alpha.1.md`
-- `docs/RELEASE_CHECKLIST.md`
-- `docs/V05_REVIEW_GUIDE.md`
-- `docs/V05_DETECTION_REGRESSION_MATRIX.md`
-- `docs/V05_MARKETING_KIT.md`
-- `docs/PRIVACY.md`
-- `docs/SECURITY_MODEL.md`
-- `docs/EVIDENCE_INTEGRITY.md`
+## The QuietWard system
+
+**QuietWard** is the detector and evidence layer.  
+**[QuietWard Response](https://github.com/LUKEcheadle-ship-it/quietward-response)** is the investigation and controlled-response layer.
+
+Together they explore a security architecture where detection can lead to action **without turning the endpoint agent into a general-purpose remote administration tool**.
 
 ## License
 
-MIT. See `LICENSE`.
+MIT. See [`LICENSE`](LICENSE).
 
-## Repository policy
+## Responsible public use
 
-Never commit malware samples, private host logs, credentials, runtime databases, scanner databases, private network inventories, raw persistence files, signing keys or production model inputs. Public issues must not contain private logs, keys, database files, or personal information.
+Never commit malware samples, private host logs, credentials, runtime databases, scanner databases, private network inventories, raw persistence files, signing keys, or production model inputs. Public issues must not contain private logs, keys, database files, or personal information.
