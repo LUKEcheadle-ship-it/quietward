@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.6.0-alpha.1 - 2026-08-31
+
+QuietWard v0.6 adds the observation-only detector side of the joint QuietWard + QuietWard Response workflow while preserving the existing local-first safety boundary.
+
+### Added
+
+- Privacy-preserving one-way handoff contract for QuietWard Response.
+- Installation-keyed HMAC identities for finding subjects and internal finding identities instead of exporting raw identifiers.
+- Deterministic Response event IDs derived from keyed finding identity.
+- Continuous read-only follower for QuietWard's persisted evidence chain.
+- Private, atomic, bounded local handoff outbox with backpressure and crash-safe state.
+- Exact QuietWard evidence-chain cycle ID and chain-hash provenance on automated handoff events.
+- Retained evidence-chain verification before any automated handoff export.
+- Linux systemd user-service installer for continuous handoff-outbox operation.
+- Focused privacy, provenance, integrity, idempotency, backpressure, and release-contract tests.
+
+### Security boundary
+
+- QuietWard remains observation-only and executes zero response actions.
+- QuietWard holds no Response network credential and contains no Response action-polling client.
+- Handoffs exclude raw finding subjects, raw internal finding IDs, command lines, executable paths, raw network addresses, and action targets.
+- Handoff creation fails closed on evidence-chain tampering, malformed provenance, executable authority, outbox-state mismatch, changed deterministic files, or outbox saturation.
+- Process termination, quarantine, firewall changes, host isolation, general service control, arbitrary shell execution, cloud upload, and autonomous remediation remain unavailable in QuietWard.
+
+### Joint qualification
+
+The paired candidate is qualified from the QuietWard Response checkout with:
+
+```text
+python scripts/verify_v11_diagnostics.py --quietward-repo ../quietward
+```
+
+The joint gate must verify the QuietWard public-release audit and full suite, the focused v0.6 handoff gate, Response backend/frontend/migrations, and a live QuietWard -> sanitized handoff -> Response incident -> analyst approval -> read-only endpoint diagnostic -> signed result -> audit lifecycle.
+
 ## 0.5.0-alpha.1 - 2026-08-25
 
 QuietWard v0.5 is the project's largest update so far, combining the lower-overhead always-on core, stable incident lifecycle, stronger privacy/evidence handling, and the public detection-hardening line while preserving observation-only behavior.
