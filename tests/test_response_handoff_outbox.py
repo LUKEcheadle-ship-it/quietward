@@ -6,6 +6,7 @@ import sqlite3
 import sys
 import tempfile
 import unittest
+from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -93,7 +94,7 @@ def _cycle_payload(subject: str = "/private/example.bin", *, with_finding: bool 
 def _database(path: Path, rows: list[tuple[int, dict]]) -> dict[int, str]:
     hashes: dict[int, str] = {}
     previous = "0" * 64
-    with sqlite3.connect(path) as connection:
+    with closing(sqlite3.connect(path)) as connection:
         connection.execute("CREATE TABLE metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL)")
         connection.execute(
             """
@@ -231,7 +232,7 @@ class ResponseHandoffOutboxTests(unittest.TestCase):
             database = root / "quietward.sqlite3"
             outbox = root / "outbox"
             _database(database, [(1, _cycle_payload())])
-            with sqlite3.connect(database) as connection:
+            with closing(sqlite3.connect(database)) as connection:
                 connection.execute(
                     "UPDATE evidence_chain SET payload_json=? WHERE cycle_id=1",
                     (json.dumps({"tampered": True}),),
