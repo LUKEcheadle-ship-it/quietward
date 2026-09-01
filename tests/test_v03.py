@@ -121,7 +121,10 @@ class V03Tests(unittest.TestCase):
     def test_evidence_chain_detects_tampering(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            settings = StorageSettings(root / "db.sqlite3", root / "alerts.jsonl")
+            # This test uses a fixed historical timestamp. Give its fixture a long
+            # retention window so calendar time cannot prune the cycle before the
+            # tamper assertion runs.
+            settings = StorageSettings(root / "db.sqlite3", root / "alerts.jsonl", retention_days=365)
             event = SecurityEvent("event-1", NOW, "host-a", "test", EventKind.ACCOUNT_CHANGE, "user:x", {})
             batch = CollectionBatch(CollectorSnapshot(NOW, "host-a"), (event,))
             report = SentinelPipeline().analyze([event])
