@@ -189,10 +189,17 @@ def build_response_handoff_events(
             finding.subject,
             "response-subject-v1",
         )
+        finding_token = privacy_identity.identify_scoped(
+            finding.finding_id,
+            "response-finding-v1",
+        )
+        # The exported event identity is installation-keyed through finding_token.
+        # This keeps duplicate handling deterministic on one installation without
+        # exposing the unkeyed internal QuietWard finding identifier.
         response_event_id = str(
             uuid5(
                 NAMESPACE_URL,
-                f"quietward-response:{finding.host_id}:{finding.finding_id}",
+                f"quietward-response:{finding.host_id}:{finding_token}",
             )
         )
         payloads.append(
@@ -225,7 +232,7 @@ def build_response_handoff_events(
                 "persistence": None,
                 "metadata": {
                     "quietward_response_context_version": RESPONSE_CONTEXT_VERSION,
-                    "quietward_finding_id": finding.finding_id,
+                    "quietward_finding_hmac_sha256": finding_token,
                     "quietward_score": round(finding.score, 2),
                     "quietward_mode": report.mode,
                     "requires_human_approval": finding.requires_human_approval,
