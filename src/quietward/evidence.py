@@ -14,6 +14,13 @@ EVIDENCE_KEY_ID_NAMESPACES = {
 }
 
 
+def _is_link_or_reparse(info: os.stat_result) -> bool:
+    return stat.S_ISLNK(info.st_mode) or bool(
+        getattr(info, "st_file_attributes", 0)
+        & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class EvidenceSigner:
     """Loads a private local key and signs retained evidence-chain hashes."""
@@ -36,6 +43,12 @@ class EvidenceSigner:
         path = path.expanduser()
         if not path.is_absolute():
             raise ValueError("evidence signing key path must be absolute")
+        try:
+            pre_open = path.lstat()
+        except OSError as exc:
+            raise ValueError(f"cannot inspect evidence signing key: {exc}") from exc
+        if _is_link_or_reparse(pre_open):
+            raise ValueError("evidence signing key must be a regular non-symlink file")
         flags = (
             os.O_RDONLY
             | getattr(os, "O_BINARY", 0)
@@ -48,6 +61,17 @@ class EvidenceSigner:
             raise ValueError(f"cannot open evidence signing key: {exc}") from exc
         try:
             info = os.fstat(descriptor)
+            try:
+                current = path.lstat()
+            except OSError as exc:
+                raise ValueError("evidence signing key changed while opening") from exc
+            if _is_link_or_reparse(current):
+                raise ValueError("evidence signing key must be a regular non-symlink file")
+            if (
+                getattr(current, "st_dev", None) != getattr(info, "st_dev", None)
+                or getattr(current, "st_ino", None) != getattr(info, "st_ino", None)
+            ):
+                raise ValueError("evidence signing key changed while opening")
             if not stat.S_ISREG(info.st_mode):
                 raise ValueError(
                     "evidence signing key must be a regular non-symlink file"
