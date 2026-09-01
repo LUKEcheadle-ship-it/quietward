@@ -92,8 +92,8 @@ The unit uses a private umask, `NoNewPrivileges`, and `PrivateTmp`. It still has
 
 For each correlated finding, QuietWard may export:
 
-- deterministic Response event ID;
-- QuietWard finding ID;
+- deterministic Response event ID derived from an installation-keyed finding token;
+- installation-keyed HMAC-SHA256 finding identity rather than the internal QuietWard finding ID;
 - host ID required for host-bound Response authentication;
 - coarse OS family: Windows, Linux, Darwin, or Unknown;
 - severity, score, confidence, and event count;
@@ -105,6 +105,7 @@ For each correlated finding, QuietWard may export:
 The handoff does **not** include:
 
 - raw finding subjects;
+- raw internal QuietWard finding identifiers;
 - raw process command lines;
 - executable paths from event attributes;
 - raw file paths as subject identity;
