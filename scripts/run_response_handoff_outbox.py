@@ -231,6 +231,8 @@ def _bundle(
         privacy_identity=identity,
         source_version=__version__,
         operating_system=platform.system(),
+        source_cycle_id=cycle_id,
+        source_chain_hash=chain_hash,
     )
     if not handoff_events:
         return None
