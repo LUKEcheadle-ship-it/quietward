@@ -61,6 +61,10 @@ Run the bounded Windows qualification with:
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\qualify_windows.ps1
 ```
 
+## Troubleshooting
+
+If the first-run path does not become healthy, see [`FIRST_RUN_TROUBLESHOOTING.md`](FIRST_RUN_TROUBLESHOOTING.md) for a platform-specific troubleshooting matrix.
+
 ## Common messages
 
 ### Python 3.11 or newer is required
