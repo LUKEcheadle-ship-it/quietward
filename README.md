@@ -1,23 +1,37 @@
 # QuietWard
 
-**Local-first endpoint security that watches, explains, and preserves control.**
+**Local endpoint security that explains what changed — without giving the monitor power to change your machine.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-blue)
 ![Mode](https://img.shields.io/badge/Mode-Observation--Only-success)
 ![Version](https://img.shields.io/badge/Preview-0.6.0a1-orange)
 
-QuietWard is an offline-first, observation-only cybersecurity monitor designed to answer a simple question:
+QuietWard is an offline-first, observation-only endpoint security monitor for people who want useful host visibility without silently handing a security agent broad control of the computer.
 
-> **What changed on this machine, why might it matter, and what evidence supports that conclusion?**
+It correlates processes, network activity, persistence, authentication evidence, file integrity, container state, Windows Defender context, and its own integrity into explainable findings backed by local tamper-evident evidence.
 
-It monitors host activity, correlates related signals into explainable findings, tracks incidents over time, and preserves signed local evidence — **without silently changing the computer or giving itself a remote-command surface**.
+## Try it before installing it
+
+See the real QuietWard scoring, correlation, finding, and policy path using **synthetic data only**:
+
+```bash
+python scripts/quick_demo.py
+```
+
+For the full structured payload:
+
+```bash
+python scripts/quick_demo.py --json
+```
+
+The demo performs **no host scan, no network request, no system change, and no action execution**. It exists so a new visitor can understand the project before configuring endpoint monitoring.
+
+See [`docs/TRY_IT.md`](docs/TRY_IT.md) for the guided walkthrough.
 
 ![QuietWard Windows dashboard](docs/assets/quietward-windows-dashboard.png)
 
 ## Why QuietWard
-
-Most endpoint tools optimize for either visibility or control. QuietWard deliberately starts with visibility.
 
 | Principle | QuietWard approach |
 | --- | --- |
@@ -43,9 +57,9 @@ QuietWard combines multiple read-only host signals instead of treating each even
 
 Deterministic scoring and correlation cover high-signal patterns including credential spray/dumping, reverse-shell behavior, process injection markers, document-to-interpreter ancestry, suspicious Linux web/server shell ancestry, ransomware recovery inhibition, event-log clearing, dangerous container configuration, and corroborated multi-stage activity.
 
-## From detection to response
+## QuietWard + Response
 
-QuietWard `0.6.0a1` can hand verified findings to **[QuietWard Response](https://github.com/LUKEcheadle-ship-it/quietward-response)** through a one-way, sanitized local bridge.
+QuietWard `0.6.0a1` can hand verified findings to **[QuietWard Response](https://github.com/LUKEcheadle-ship-it/quietward-response)** through a one-way sanitized local bridge.
 
 ```mermaid
 flowchart LR
@@ -56,31 +70,29 @@ flowchart LR
     E --> F[QuietWard Response]
 ```
 
-The bridge preserves the core security boundary:
+The bridge preserves the separation of authority:
 
-- QuietWard remains observation-only.
+- QuietWard stays observation-only.
 - QuietWard holds no Response network credential.
 - raw finding subjects and internal finding IDs do not cross the handoff boundary.
 - retained evidence-chain provenance is verified before export.
 - malformed provenance, changed handoff files, outbox saturation, or executable authority fail closed.
 
-QuietWard and QuietWard Response can also operate independently.
+The projects can also operate independently.
 
-## Current preview
+## Qualification evidence
 
-**Version:** `0.6.0a1`
-
-The current `main` line contains the paired QuietWard/Response integration preview. The exact joint candidate passed the complete paired qualification gate on Linux and Windows runners before being promoted to `main`, including:
+The current paired QuietWard/Response candidate was promoted to `main` only after the complete joint qualification gate passed on Linux and Windows runners, including:
 
 - **441 QuietWard tests** with platform-appropriate skips
 - **12 focused handoff/privacy/integrity tests**
 - public-release audit
 - evidence-chain tamper checks
 - privacy and secret-key safety checks
-- live QuietWard → Response handoff and controlled diagnostic acceptance
+- live QuietWard → Response acceptance
 - confirmation that `actions_executed == 0` inside QuietWard
 
-The v0.6 line is still an experimental preview, not a replacement for Microsoft Defender, enterprise EDR/MDR, or professional incident response.
+QuietWard remains an experimental security project, not a replacement for Microsoft Defender, enterprise EDR/MDR, or professional incident response.
 
 ## Safety boundary
 
@@ -105,7 +117,7 @@ public_listener == false
 
 The dashboard is read-only and loopback-only by default. Models may help explain or reprioritize bounded evidence, but they cannot authorize an action.
 
-## Quick start
+## Install the real monitor
 
 ### Windows
 
@@ -113,11 +125,6 @@ Requirements: Windows 11, Python 3.11+, PowerShell.
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\install_windows.ps1
-```
-
-Then:
-
-```powershell
 quietward status --pretty
 quietward open-dashboard --pretty
 quietward diagnose --pretty
@@ -134,44 +141,22 @@ quietward status --config ~/.config/quietward/config.json --pretty
 
 ## Verify the project
 
-Run the complete release-validation path:
-
 ```bash
 python scripts/validate_migrated_release.py --pretty
-```
-
-Run the focused v0.6 Response-handoff safety gate:
-
-```bash
 python scripts/verify_v06_response_handoff.py
 ```
 
-The release tooling performs compilation, safety/public-release audits, deterministic packaging checks, and archive verification. Platform-specific release claims should only be made after the corresponding native qualification is complete.
+## Explore or contribute
 
-## Export a redacted incident
-
-```bash
-quietward export FINDING_ID incident.json --format json --pretty
-quietward export FINDING_ID incident.md --format markdown
-```
-
-Exports remain local and exclude analyst notes and raw sensitive identities according to the redaction contract.
-
-## Explore the design
-
-- [`docs/releases/v0.6.0-alpha.1.md`](docs/releases/v0.6.0-alpha.1.md) — v0.6 preview
+- [`docs/TRY_IT.md`](docs/TRY_IT.md) — safe first look
+- [`docs/COMMUNITY_ROADMAP.md`](docs/COMMUNITY_ROADMAP.md) — public product direction
 - [`docs/FIRST_RUN.md`](docs/FIRST_RUN.md) — first run
 - [`docs/PRIVACY.md`](docs/PRIVACY.md) — privacy model
 - [`docs/SECURITY_MODEL.md`](docs/SECURITY_MODEL.md) — security boundary
 - [`docs/EVIDENCE_INTEGRITY.md`](docs/EVIDENCE_INTEGRITY.md) — evidence integrity
-- [`docs/V05_DETECTION_REGRESSION_MATRIX.md`](docs/V05_DETECTION_REGRESSION_MATRIX.md) — detection regression coverage
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — contribution guide
 
-## The QuietWard system
-
-**QuietWard** is the detector and evidence layer.  
-**[QuietWard Response](https://github.com/LUKEcheadle-ship-it/quietward-response)** is the investigation and controlled-response layer.
-
-Together they explore a security architecture where detection can lead to action **without turning the endpoint agent into a general-purpose remote administration tool**.
+Good-first-issue and help-wanted tasks are intentionally scoped so contributors can improve documentation, UI, tests, examples, and portability without needing to expand endpoint authority.
 
 ## License
 
