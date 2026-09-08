@@ -11,6 +11,16 @@ QuietWard is an offline-first, observation-only endpoint security monitor for pe
 
 It correlates processes, network activity, persistence, authentication evidence, file integrity, container state, Windows Defender context, and its own integrity into explainable findings backed by local tamper-evident evidence.
 
+## Engineering highlights
+
+- **Cross-platform security engineering:** Windows 11 and Debian support with platform-specific, read-only collectors.
+- **Explainable detection:** deterministic scoring and multi-signal correlation instead of opaque alert-only output.
+- **Privacy by design:** local-first operation, keyed pseudonymous identities, loopback-only dashboard defaults, and no cloud telemetry by default.
+- **Evidence integrity:** hash-chained evidence with optional signing and independent verification.
+- **Safety-constrained architecture:** the monitor cannot terminate processes, quarantine files, change firewall rules, isolate hosts, or execute arbitrary commands.
+- **Release discipline:** the current paired candidate passed a 441-test QuietWard suite plus focused privacy, integrity, and handoff qualification before promotion to `main`.
+- **Open-source workflow:** documented first-run, security, privacy, contribution, and community-roadmap paths for outside users and contributors.
+
 ## Try it before installing it
 
 See the real QuietWard scoring, correlation, finding, and policy path using **synthetic data only**:
@@ -127,7 +137,7 @@ Requirements: Windows 11, Python 3.11+, PowerShell.
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\install_windows.ps1
 quietward status --pretty
 quietward open-dashboard --pretty
-quietward diagnose --pretty
+quietward doctor --pretty
 ```
 
 Dashboard: `http://127.0.0.1:8765/`
