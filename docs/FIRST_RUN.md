@@ -50,7 +50,7 @@ A high severity can represent a real but authorized exposure, such as a delibera
 ## Run diagnostics
 
 ```powershell
-quietward diagnose --pretty
+quietward doctor --pretty
 ```
 
 Diagnostics check the platform, configuration, local database, evidence chain, collector prerequisites, and safety invariants. They do not modify the host.
@@ -84,7 +84,7 @@ Failed-logon collection requires permission to read the Windows Security log. It
 Run:
 
 ```powershell
-quietward diagnose --pretty
+quietward doctor --pretty
 Get-ScheduledTask -TaskName "QuietWard" -ErrorAction SilentlyContinue
 ```
 
@@ -114,4 +114,4 @@ QuietWard is offline-first. Raw process arguments, account names, remote address
 
 ## Getting help
 
-Include the sanitized output from `quietward diagnose --pretty`, the QuietWard version, and the operating system version. Never post private keys, the runtime database, raw host logs, or unreviewed qualification reports.
+Include the sanitized output from `quietward doctor --pretty`, the QuietWard version, and the operating system version. Never post private keys, the runtime database, raw host logs, or unreviewed qualification reports.
