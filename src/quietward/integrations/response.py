@@ -9,7 +9,7 @@ from ..contracts import AnalysisReport, EventKind, Finding, SecurityEvent
 from ..privacy_identity import PrivacyIdentity
 
 
-RESPONSE_CONTEXT_VERSION = "1.0"
+RESPONSE_CONTEXT_VERSION = "1.1"
 _RESPONSE_HOST_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 _SAFE_REASON_CODE = re.compile(r"^[a-z0-9_.:+-]{1,64}$")
 _CHAIN_HASH = re.compile(r"^[0-9a-f]{64}$")
@@ -50,6 +50,20 @@ _CATEGORY_PRIORITY = (
     "operational",
     "security",
 )
+_PLAYBOOK_BY_CATEGORY = {
+    "malware": "malware_triage",
+    "integrity": "evidence_integrity_triage",
+    "privilege": "privilege_triage",
+    "persistence": "persistence_triage",
+    "identity": "identity_triage",
+    "network": "network_triage",
+    "container": "container_triage",
+    "vulnerability": "vulnerability_triage",
+    "execution": "process_execution_triage",
+    "file_integrity": "file_integrity_triage",
+    "operational": "host_health_triage",
+    "security": "general_incident_triage",
+}
 
 
 def _category(events: Iterable[SecurityEvent]) -> str:
@@ -100,7 +114,36 @@ def _investigation_hints(category: str) -> list[str]:
         hints.extend(["process_inventory", "network_snapshot"])
     if category in {"file_integrity", "malware"}:
         hints.append("artifact_metadata_review")
+    if category in {"identity", "privilege"}:
+        hints.append("identity_activity_review")
+    if category == "integrity":
+        hints.append("evidence_chain_review")
     return list(dict.fromkeys(hints))
+
+
+def _response_priority(finding: Finding) -> str:
+    """Return a coarse, deterministic triage priority without granting authority."""
+    severity = finding.severity.value
+    if severity == "critical" or finding.score >= 90.0:
+        return "urgent"
+    if severity == "high" or finding.score >= 70.0:
+        return "elevated"
+    return "routine"
+
+
+def _evidence_strength(events: list[SecurityEvent]) -> str:
+    """Describe correlation breadth using only non-sensitive aggregate evidence."""
+    kinds = {event.kind for event in events}
+    sources = {event.source for event in events}
+    if len(events) >= 3 and (len(kinds) >= 2 or len(sources) >= 2):
+        return "strong"
+    if len(events) >= 2 or len(kinds) >= 2 or len(sources) >= 2:
+        return "corroborated"
+    return "limited"
+
+
+def _recommended_playbook(category: str) -> str:
+    return _PLAYBOOK_BY_CATEGORY.get(category, "general_incident_triage")
 
 
 def _coarse_os_family(value: str | None) -> str | None:
@@ -157,6 +200,10 @@ def build_response_handoff_events(
     authority back into the QuietWard process. A coarse OS family may cross the
     boundary so Response can enforce platform policy. Automated outbox handoffs may
     additionally carry the exact QuietWard evidence-chain cycle/hash for provenance.
+
+    Context v1.1 adds only coarse triage metadata: response priority, evidence
+    strength, and a recommended investigation playbook. These values help Response
+    choose the next read-only investigation while carrying no executable target.
     """
     _validate_observation_only(report)
     provenance_cycle, provenance_hash = _validate_provenance(
@@ -193,9 +240,6 @@ def build_response_handoff_events(
             finding.finding_id,
             "response-finding-v1",
         )
-        # The exported event identity is installation-keyed through finding_token.
-        # This keeps duplicate handling deterministic on one installation without
-        # exposing the unkeyed internal QuietWard finding identifier.
         response_event_id = str(
             uuid5(
                 NAMESPACE_URL,
@@ -239,6 +283,9 @@ def build_response_handoff_events(
                     "observation_only_source": True,
                     "executable_authority": False,
                     "investigation_hints": _investigation_hints(category),
+                    "response_priority": _response_priority(finding),
+                    "evidence_strength": _evidence_strength(matched),
+                    "recommended_playbook": _recommended_playbook(category),
                     "operating_system": os_family,
                     "quietward_source_cycle_id": provenance_cycle,
                     "quietward_source_chain_hash": provenance_hash,
