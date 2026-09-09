@@ -80,3 +80,7 @@ New detectors should not be released unless Response can resolve or explicitly e
 - no generic shell or arbitrary command/PID/path/address capability
 - joint end-to-end tests cover finding -> sanitized handoff -> incident -> triage -> approval -> action -> signed result -> audit
 - paired Response resolution-coverage gate passes with zero unresolved QuietWard categories
+
+## Current status
+
+The paired branches remain draft work. The process-containment implementation is not yet locally/jointly qualified, several other resolution families are still incomplete, and the final Response coverage gate is intentionally BLOCKED. The combined update is therefore not release-ready and must remain unreleased.
