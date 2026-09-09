@@ -95,6 +95,24 @@ def _subject_type(events: Iterable[SecurityEvent]) -> str:
     return "host_or_other"
 
 
+def build_resolution_target_handle(
+    finding: Finding,
+    *,
+    privacy_identity: PrivacyIdentity,
+) -> str:
+    """Return an opaque identifier for endpoint-local remediation escrow.
+
+    The handle itself is safe to cross the Response boundary. The corresponding raw
+    target is never embedded in the network handoff and must remain in a private
+    local escrow consumed only by the endpoint Response agent.
+    """
+    token = privacy_identity.identify_scoped(
+        f"{finding.finding_id}\n{finding.subject}",
+        "response-resolution-target-v1",
+    )
+    return f"qwrt-{token}"
+
+
 def _reason_codes(finding: Finding) -> list[str]:
     values: set[str] = set()
     for reason in finding.reasons:
@@ -122,7 +140,6 @@ def _investigation_hints(category: str) -> list[str]:
 
 
 def _response_priority(finding: Finding) -> str:
-    """Return a coarse, deterministic triage priority without granting authority."""
     severity = finding.severity.value
     if severity == "critical" or finding.score >= 90.0:
         return "urgent"
@@ -132,7 +149,6 @@ def _response_priority(finding: Finding) -> str:
 
 
 def _evidence_strength(events: list[SecurityEvent]) -> str:
-    """Describe correlation breadth using only non-sensitive aggregate evidence."""
     kinds = {event.kind for event in events}
     sources = {event.source for event in events}
     if len(events) >= 3 and (len(kinds) >= 2 or len(sources) >= 2):
@@ -195,15 +211,10 @@ def build_response_handoff_events(
 ) -> list[dict[str, Any]]:
     """Build sanitized Response EventCreate payloads from QuietWard findings.
 
-    This is a one-way data contract only. It does not make network requests, poll
-    for actions, execute proposals, expose raw finding subjects, or grant Response
-    authority back into the QuietWard process. A coarse OS family may cross the
-    boundary so Response can enforce platform policy. Automated outbox handoffs may
-    additionally carry the exact QuietWard evidence-chain cycle/hash for provenance.
-
-    Context v1.1 adds only coarse triage metadata: response priority, evidence
-    strength, and a recommended investigation playbook. These values help Response
-    choose the next read-only investigation while carrying no executable target.
+    The only remediation-related value allowed across this boundary is an opaque
+    resolution-target handle. It contains no path/PID/address/account identifier and
+    has no executable authority. Any raw local target needed for later remediation
+    remains in endpoint-local escrow outside this serialized network handoff.
     """
     _validate_observation_only(report)
     provenance_cycle, provenance_hash = _validate_provenance(
@@ -240,6 +251,10 @@ def build_response_handoff_events(
             finding.finding_id,
             "response-finding-v1",
         )
+        resolution_handle = build_resolution_target_handle(
+            finding,
+            privacy_identity=privacy_identity,
+        )
         response_event_id = str(
             uuid5(
                 NAMESPACE_URL,
@@ -269,6 +284,7 @@ def build_response_handoff_events(
                     "correlation_signal_codes": _reason_codes(finding),
                     "subject_hmac_sha256": subject_token,
                     "subject_type": subject_type,
+                    "resolution_target_handle": resolution_handle,
                 },
                 "process": None,
                 "file": None,
