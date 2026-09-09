@@ -16,7 +16,7 @@ class CompactEvidenceReplayTests(unittest.TestCase):
     def test_quiet_reference_cycles_replay_without_snapshot_payload(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            settings = StorageSettings(database_path=root / "quietward.sqlite3", alert_log_path=root / "alerts.jsonl")
+            settings = StorageSettings(database_path=root / "quietward.sqlite3", alert_log_path=root / "alerts.jsonl", retention_days=365)
             monotonic = [0.0]
             now = datetime(2026, 8, 8, 4, 0, tzinfo=timezone.utc)
             report = SentinelPipeline().analyze([])
