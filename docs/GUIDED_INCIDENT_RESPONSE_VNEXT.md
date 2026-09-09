@@ -10,7 +10,7 @@ QuietWard remains responsible for detection, correlation, scoring, evidence prov
 
 ## Phase 1 — Guided response context
 
-Status: implementation started on `feature/guided-incident-response-vnext`.
+Status: implemented on `feature/guided-incident-response-vnext`; qualification pending.
 
 QuietWard handoffs add a versioned, coarse response profile:
 
@@ -20,13 +20,15 @@ QuietWard handoffs add a versioned, coarse response profile:
 - `investigation_hints`: bounded read-only investigation hints
 - existing keyed subject/finding identities and evidence-chain provenance remain intact
 
-The handoff must never carry executable authority, raw remediation targets, commands, raw private subjects, or a mechanism for Response to control the QuietWard process.
+The handoff never carries executable authority, raw remediation targets, commands, raw private subjects, or a mechanism for Response to control the QuietWard process.
 
 ## Phase 2 — One-click incident triage bundle
 
-Response should add an analyst-approved `collect_incident_triage_bundle` action that composes its existing bounded host, process, and platform-supported network diagnostics into one signed result.
+Status: implemented in the paired QuietWard Response feature branch; qualification pending.
 
-Requirements:
+Response now has an analyst-approved `collect_incident_triage_bundle` action that composes its existing bounded host, process, and platform-supported network diagnostics into one signed result.
+
+Requirements preserved by the implementation:
 
 - parameterless and allowlisted
 - outward-polling Response agent only
@@ -34,7 +36,7 @@ Requirements:
 - no raw command lines, arbitrary paths, or raw remote addresses
 - capability-aware by operating system
 - partial results explicitly identify unsupported/skipped components
-- result is incident-bound, audited, and replay-safe
+- result remains incident-bound, audited, and replay-safe through the existing Response lifecycle
 
 ## Phase 3 — Evidence-bound containment in Response
 
