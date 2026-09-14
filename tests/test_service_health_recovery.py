@@ -21,7 +21,7 @@ class FakeCollector:
 
 class ServiceHealthRecoveryTests(unittest.TestCase):
     def config(self, root: Path) -> SentinelConfig:
-        return SentinelConfig.from_dict({"state_dir": str(root), "collector": {"include_processes": False, "include_listening_sockets": False, "include_outbound_connections": False, "include_auth_journal": False, "include_docker": False, "include_persistence": False, "sensitive_files": []}, "dashboard": {"enabled": False}, "self_integrity": {"enabled": False}})
+        return SentinelConfig.from_dict({"state_dir": str(root), "storage": {"retention_days": 365}, "collector": {"include_processes": False, "include_listening_sockets": False, "include_outbound_connections": False, "include_auth_journal": False, "include_docker": False, "include_persistence": False, "sensitive_files": []}, "dashboard": {"enabled": False}, "self_integrity": {"enabled": False}})
     def service(self, root: Path):
         config = self.config(root); now = datetime(2026, 8, 7, 22, 30, tzinfo=timezone.utc); snapshot = CollectorSnapshot(observed_at=now, host_id="host-test", collector_version="windows-read-only-v1"); store = SentinelStore(config.storage)
         service = SentinelService(config, collector=FakeCollector(snapshot), store=store, alert_sink=LocalAlertSink(config.storage.alert_log_path), clock=lambda: now)

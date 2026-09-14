@@ -15,7 +15,7 @@ from quietward.pipeline import SentinelPipeline
 
 class MaintenanceStoreTests(unittest.TestCase):
     def settings(self, root: Path) -> StorageSettings:
-        return StorageSettings(database_path=root / "quietward.sqlite3", alert_log_path=root / "alerts.jsonl", max_snapshots=1, max_cycles=20)
+        return StorageSettings(database_path=root / "quietward.sqlite3", alert_log_path=root / "alerts.jsonl", max_snapshots=1, max_cycles=20, retention_days=365)
 
     def test_fully_quiet_cycles_are_volatile_until_full_checkpoint(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
