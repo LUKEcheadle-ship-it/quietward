@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from _storage_clock import StorageClockTestCase
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -14,7 +15,7 @@ from quietward.pipeline import SentinelPipeline
 from quietward.source_aware_lifecycle import SourceAwareIncidentLifecycleRepository
 
 
-class CoreStoreTests(unittest.TestCase):
+class CoreStoreTests(StorageClockTestCase):
     def test_not_due_active_incident_does_not_force_unrelated_fast_write(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

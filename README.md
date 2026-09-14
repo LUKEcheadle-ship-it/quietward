@@ -151,12 +151,23 @@ quietward status --config ~/.config/quietward/config.json --pretty
 
 ## Verify the project
 
+The source currently targets `0.6.0a1`; the latest published prerelease is still 0.5.0-alpha.1. See [current preview notes](docs/releases/v0.6.0-alpha.1.md) and the [synthetic detection gallery](docs/DETECTION_GALLERY.md).
+
 ```bash
 python scripts/validate_migrated_release.py --pretty
 python scripts/verify_v06_response_handoff.py
+python scripts/detection_gallery.py --json
 ```
 
 ## Explore or contribute
+
+To train the optional priority model, supply independent evaluation data:
+
+```bash
+python scripts/train_priority_model.py training.jsonl model.json --evaluation-dataset heldout.jsonl
+```
+
+The trainer rejects overlapping feature vectors and reports evaluation metrics separately from training size. Held-out performance still depends on representative labels and data; synthetic examples do not establish real-world detection accuracy.
 
 - [`docs/TRY_IT.md`](docs/TRY_IT.md) — safe first look
 - [`docs/COMMUNITY_ROADMAP.md`](docs/COMMUNITY_ROADMAP.md) — public product direction

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+from _storage_clock import StorageClockTestCase
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -15,7 +16,7 @@ from quietward.product_store import ProductSentinelStore
 from quietward.storage import SentinelStore
 
 
-class ScopedExpectedRuleTests(unittest.TestCase):
+class ScopedExpectedRuleTests(StorageClockTestCase):
     def test_expected_rule_only_suppresses_reviewed_event_kinds(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary); settings = StorageSettings(database_path=root / "quietward.sqlite3", alert_log_path=root / "alerts.jsonl"); now = datetime(2026, 8, 7, 22, 0, tzinfo=timezone.utc)

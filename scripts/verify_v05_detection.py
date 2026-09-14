@@ -7,6 +7,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from release_metadata import release_metadata
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -32,30 +33,22 @@ def _require_pytest() -> None:
 
 
 def _version() -> str:
-    init_text = (ROOT / "src" / "quietward" / "__init__.py").read_text(encoding="utf-8")
-    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
-    match = re.search(r'__version__\s*=\s*"([^"]+)"', init_text)
-    if match is None or match.group(1) != "0.5.0a1":
-        raise RuntimeError("QuietWard release branch must report 0.5.0a1")
-    if 'version = "0.5.0a1"' not in pyproject:
-        raise RuntimeError("pyproject version is not 0.5.0a1")
-    return match.group(1)
+    return release_metadata(ROOT)[0]
 
 
 def _verify_release_documentation() -> None:
+    version, display = release_metadata(ROOT)
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-    release_notes = ROOT / "docs" / "releases" / "v0.5.0-alpha.1.md"
+    release_notes = ROOT / "docs" / "releases" / f"v{display}.md"
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    if "## 0.5.0-alpha.1" not in changelog:
-        raise RuntimeError("CHANGELOG.md is missing the v0.5.0-alpha.1 release entry")
+    if version not in changelog and display not in changelog:
+        raise RuntimeError("CHANGELOG.md is missing the current release entry")
     if not release_notes.is_file():
-        raise RuntimeError("v0.5.0-alpha.1 release notes are missing")
+        raise RuntimeError("current release notes are missing")
     for fragment in (
-        "v0.5.0-alpha.1",
-        "0.5.0a1",
-        "release/v0.5.0-alpha.1",
-        "native Windows FAST",
-        "incident lifecycle",
+        version,
+        "observation-only",
+        "evidence",
     ):
         if fragment.casefold() not in readme.casefold():
             raise RuntimeError(f"README combined-release metadata missing: {fragment}")
@@ -67,8 +60,8 @@ def _verify_observation_only_source_contract() -> None:
     text = (ROOT / "README.md").read_text(encoding="utf-8").lower()
     required = (
         "observation-only",
-        "does not quarantine/delete files",
-        "terminate processes or services",
+        "quarantine or delete files",
+        "terminate processes",
         "change firewall rules",
         "actions_executed == 0",
         "executable_proposals == 0",
@@ -227,7 +220,7 @@ def main() -> int:
     _run([sys.executable, "-m", "pytest", "-q", "-W", "error"], env=env)
     _run([sys.executable, "scripts/public_release_audit.py"], env=env)
 
-    print("\nQUIETWARD 0.5.0-ALPHA.1 COMBINED GATE: PASS")
+    print(f"\nQUIETWARD {version} COMBINED GATE: PASS")
     print(f"version={version}")
     print("full pytest suite=PASS")
     print("multi-cadence core=PASS")

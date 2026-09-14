@@ -11,9 +11,9 @@ import tempfile
 import tomllib
 from pathlib import Path
 from typing import Any, Sequence
+from release_metadata import release_metadata
 
 EXPECTED_PROJECT = "quietward"
-EXPECTED_PYTHON_VERSION = "0.5.0a1"
 
 
 def _run(command: Sequence[str], *, root: Path, environment: dict[str, str]) -> dict[str, Any]:
@@ -65,8 +65,11 @@ def validate(root: Path) -> dict[str, object]:
     blockers: list[str] = []
     if project_name != EXPECTED_PROJECT:
         blockers.append(f"release project must be {EXPECTED_PROJECT}, found {project_name}")
-    if python_version != EXPECTED_PYTHON_VERSION:
-        blockers.append(f"release version must be {EXPECTED_PYTHON_VERSION}, found {python_version}")
+    release_version = "unknown"
+    try:
+        _, release_version = release_metadata(checkout)
+    except (OSError, ValueError, KeyError) as exc:
+        blockers.append(str(exc))
     for private_path in (
         checkout / "docs" / "V05_APPROVAL_PACKET.md",
         checkout / "docs" / "P520_V05_EXECUTION.md",
@@ -109,8 +112,8 @@ def validate(root: Path) -> dict[str, object]:
 
     with tempfile.TemporaryDirectory(prefix="quietward-v05-release-") as temporary:
         temporary_root = Path(temporary)
-        first = temporary_root / "quietward-v0.5.0-alpha.1-first.zip"
-        second = temporary_root / "quietward-v0.5.0-alpha.1-second.zip"
+        first = temporary_root / f"quietward-v{release_version}-first.zip"
+        second = temporary_root / f"quietward-v{release_version}-second.zip"
         for output in (first, second):
             results.append(
                 _run(
@@ -151,7 +154,7 @@ def validate(root: Path) -> dict[str, object]:
         "decision": decision,
         "project": project_name,
         "python_version": python_version,
-        "release_version": "0.5.0-alpha.1",
+        "release_version": release_version,
         "unittest_core_suite_requested": True,
         "pytest_detection_suite_requested": True,
         "full_repository_tests_requested": True,
@@ -180,7 +183,7 @@ def validate(root: Path) -> dict[str, object]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="validate the QuietWard v0.5.0-alpha.1 public release tree")
+    parser = argparse.ArgumentParser(description="validate the current QuietWard public release tree")
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--pretty", action="store_true")
     args = parser.parse_args()

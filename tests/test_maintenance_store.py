@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+from _storage_clock import StorageClockTestCase
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -13,7 +14,7 @@ from quietward.maintenance_store import MaintenanceSentinelStore
 from quietward.pipeline import SentinelPipeline
 
 
-class MaintenanceStoreTests(unittest.TestCase):
+class MaintenanceStoreTests(StorageClockTestCase):
     def settings(self, root: Path) -> StorageSettings:
         return StorageSettings(database_path=root / "quietward.sqlite3", alert_log_path=root / "alerts.jsonl", max_snapshots=1, max_cycles=20)
 

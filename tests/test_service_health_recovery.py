@@ -4,6 +4,7 @@ import json
 import os
 import tempfile
 import unittest
+from _storage_clock import StorageClockTestCase
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
@@ -19,7 +20,7 @@ class FakeCollector:
     def __init__(self, snapshot: CollectorSnapshot) -> None: self.snapshot = snapshot
     def collect(self, previous=None) -> CollectionBatch: return CollectionBatch(self.snapshot, ())
 
-class ServiceHealthRecoveryTests(unittest.TestCase):
+class ServiceHealthRecoveryTests(StorageClockTestCase):
     def config(self, root: Path) -> SentinelConfig:
         return SentinelConfig.from_dict({"state_dir": str(root), "collector": {"include_processes": False, "include_listening_sockets": False, "include_outbound_connections": False, "include_auth_journal": False, "include_docker": False, "include_persistence": False, "sensitive_files": []}, "dashboard": {"enabled": False}, "self_integrity": {"enabled": False}})
     def service(self, root: Path):
