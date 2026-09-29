@@ -15,12 +15,6 @@ QuietWard is an offline-first endpoint-security monitor for Windows and Debian. 
 
 **441-test qualification suite** · **Windows 11 + Debian** · **Local-first** · **No cloud telemetry by default** · **No autonomous remediation**
 
-- **Cross-platform collection:** platform-specific, read-only collectors for Windows and Debian
-- **Explainable detection:** deterministic scoring and multi-signal correlation
-- **Evidence integrity:** hash-chained evidence with optional signing and independent verification
-- **Privacy boundaries:** installation-keyed pseudonymous identities and loopback-only dashboard defaults
-- **Constrained authority:** no arbitrary shell, quarantine, process termination, firewall changes, or host isolation
-
 ### Try it safely
 
 Run the real scoring, correlation, finding, and policy path using synthetic data only:
@@ -29,7 +23,7 @@ Run the real scoring, correlation, finding, and policy path using synthetic data
 python scripts/quick_demo.py
 ```
 
-The demo performs **no host scan, no network request, no system change, and no action execution**.
+The demo performs **no host scan, no network request, no system change, and no action execution**. See [`docs/TRY_IT.md`](docs/TRY_IT.md) for the guided walkthrough.
 
 ## Engineering highlights
 
@@ -40,24 +34,6 @@ The demo performs **no host scan, no network request, no system change, and no a
 - **Safety-constrained architecture:** the monitor cannot terminate processes, quarantine files, change firewall rules, isolate hosts, or execute arbitrary commands.
 - **Release discipline:** the current paired candidate passed a 441-test QuietWard suite plus focused privacy, integrity, and handoff qualification before promotion to `main`.
 - **Open-source workflow:** documented first-run, security, privacy, contribution, and community-roadmap paths for outside users and contributors.
-
-## Try it before installing it
-
-See the real QuietWard scoring, correlation, finding, and policy path using **synthetic data only**:
-
-```bash
-python scripts/quick_demo.py
-```
-
-For the full structured payload:
-
-```bash
-python scripts/quick_demo.py --json
-```
-
-The demo performs **no host scan, no network request, no system change, and no action execution**. It exists so a new visitor can understand the project before configuring endpoint monitoring.
-
-See [`docs/TRY_IT.md`](docs/TRY_IT.md) for the guided walkthrough.
 
 ## Why QuietWard
 
