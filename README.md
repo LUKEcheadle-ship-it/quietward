@@ -92,6 +92,8 @@ The projects can also operate independently.
 
 ## Qualification evidence
 
+> **Verification model:** QuietWard does not use GitHub Actions in the current release line. The repository's release validator treats `.github/workflows` as a release blocker, so qualification is performed through the checked-in release gates on supported Windows and Debian hosts. See [`scripts/validate_migrated_release.py`](scripts/validate_migrated_release.py), [`scripts/verify_v06_response_handoff.py`](scripts/verify_v06_response_handoff.py), and [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md).
+
 The current paired QuietWard/Response candidate was promoted to `main` only after the complete joint qualification gate passed on Linux and Windows runners, including:
 
 - **441 QuietWard tests** with platform-appropriate skips
