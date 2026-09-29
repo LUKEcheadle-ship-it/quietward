@@ -22,6 +22,7 @@ class CoreStoreTests(StorageClockTestCase):
             settings = StorageSettings(
                 database_path=root / "sentinel.sqlite3",
                 alert_log_path=root / "alerts.jsonl",
+                retention_days=365,
             )
             monotonic = [0.0]
             now = datetime(2026, 8, 8, 9, 0, tzinfo=timezone.utc)
@@ -125,6 +126,7 @@ class CoreStoreTests(StorageClockTestCase):
             settings = StorageSettings(
                 database_path=root / "sentinel.sqlite3",
                 alert_log_path=root / "alerts.jsonl",
+                retention_days=365,
             )
             now = datetime(2026, 8, 8, 9, 30, tzinfo=timezone.utc)
             events = [
