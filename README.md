@@ -1,15 +1,35 @@
 # QuietWard
 
-**Local endpoint security that explains what changed — without giving the monitor power to change your machine.**
-
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-blue)
 ![Mode](https://img.shields.io/badge/Mode-Observation--Only-success)
 ![Version](https://img.shields.io/badge/Preview-0.6.0a1-orange)
 
-QuietWard is an offline-first, observation-only endpoint security monitor for people who want useful host visibility without silently handing a security agent broad control of the computer.
+**Local endpoint security that explains what changed — without giving the monitor power to change your machine.**
 
-It correlates processes, network activity, persistence, authentication evidence, file integrity, container state, Windows Defender context, and its own integrity into explainable findings backed by local tamper-evident evidence.
+QuietWard is an offline-first endpoint-security monitor for Windows and Debian. It combines process, network, persistence, authentication, file-integrity, container, and platform-security signals into explainable findings backed by tamper-evident local evidence.
+
+![QuietWard Windows dashboard](docs/assets/quietward-windows-dashboard.png)
+
+### At a glance
+
+**441-test qualification suite** · **Windows 11 + Debian** · **Local-first** · **No cloud telemetry by default** · **No autonomous remediation**
+
+- **Cross-platform collection:** platform-specific, read-only collectors for Windows and Debian
+- **Explainable detection:** deterministic scoring and multi-signal correlation
+- **Evidence integrity:** hash-chained evidence with optional signing and independent verification
+- **Privacy boundaries:** installation-keyed pseudonymous identities and loopback-only dashboard defaults
+- **Constrained authority:** no arbitrary shell, quarantine, process termination, firewall changes, or host isolation
+
+### Try it safely
+
+Run the real scoring, correlation, finding, and policy path using synthetic data only:
+
+```bash
+python scripts/quick_demo.py
+```
+
+The demo performs **no host scan, no network request, no system change, and no action execution**.
 
 ## Engineering highlights
 
@@ -38,8 +58,6 @@ python scripts/quick_demo.py --json
 The demo performs **no host scan, no network request, no system change, and no action execution**. It exists so a new visitor can understand the project before configuring endpoint monitoring.
 
 See [`docs/TRY_IT.md`](docs/TRY_IT.md) for the guided walkthrough.
-
-![QuietWard Windows dashboard](docs/assets/quietward-windows-dashboard.png)
 
 ## Why QuietWard
 
