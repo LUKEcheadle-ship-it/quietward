@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased review fixes
+
+- Cross-check current source/package versions and require current release notes in release verification.
+- Freeze storage time only in August fixture tests; keep real retention behavior unchanged.
+- Require a disjoint held-out dataset for training CLI evaluation and validate labels/features.
+- Add a generated eight-case synthetic detection gallery comparing deterministic and hybrid scores.
+
 ## 0.6.0-alpha.1 - 2026-08-31
 
 QuietWard v0.6 adds the observation-only detector side of the joint QuietWard + QuietWard Response workflow while preserving the existing local-first safety boundary.

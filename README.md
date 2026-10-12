@@ -1,15 +1,29 @@
 # QuietWard
 
-**Local endpoint security that explains what changed — without giving the monitor power to change your machine.**
-
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-blue)
 ![Mode](https://img.shields.io/badge/Mode-Observation--Only-success)
 ![Version](https://img.shields.io/badge/Preview-0.6.0a1-orange)
 
-QuietWard is an offline-first, observation-only endpoint security monitor for people who want useful host visibility without silently handing a security agent broad control of the computer.
+**Local endpoint security that explains what changed — without giving the monitor power to change your machine.**
 
-It correlates processes, network activity, persistence, authentication evidence, file integrity, container state, Windows Defender context, and its own integrity into explainable findings backed by local tamper-evident evidence.
+QuietWard is an offline-first endpoint-security monitor for Windows and Debian. It combines process, network, persistence, authentication, file-integrity, container, and platform-security signals into explainable findings backed by tamper-evident local evidence.
+
+![QuietWard Windows dashboard](docs/assets/quietward-windows-dashboard.png)
+
+### At a glance
+
+**441-test qualification suite** · **Windows 11 + Debian** · **Local-first** · **No cloud telemetry by default** · **No autonomous remediation**
+
+### Try it safely
+
+Run the real scoring, correlation, finding, and policy path using synthetic data only:
+
+```bash
+python scripts/quick_demo.py
+```
+
+The demo performs **no host scan, no network request, no system change, and no action execution**. See [`docs/TRY_IT.md`](docs/TRY_IT.md) for the guided walkthrough.
 
 ## Engineering highlights
 
@@ -20,26 +34,6 @@ It correlates processes, network activity, persistence, authentication evidence,
 - **Safety-constrained architecture:** the monitor cannot terminate processes, quarantine files, change firewall rules, isolate hosts, or execute arbitrary commands.
 - **Release discipline:** the current paired candidate passed a 441-test QuietWard suite plus focused privacy, integrity, and handoff qualification before promotion to `main`.
 - **Open-source workflow:** documented first-run, security, privacy, contribution, and community-roadmap paths for outside users and contributors.
-
-## Try it before installing it
-
-See the real QuietWard scoring, correlation, finding, and policy path using **synthetic data only**:
-
-```bash
-python scripts/quick_demo.py
-```
-
-For the full structured payload:
-
-```bash
-python scripts/quick_demo.py --json
-```
-
-The demo performs **no host scan, no network request, no system change, and no action execution**. It exists so a new visitor can understand the project before configuring endpoint monitoring.
-
-See [`docs/TRY_IT.md`](docs/TRY_IT.md) for the guided walkthrough.
-
-![QuietWard Windows dashboard](docs/assets/quietward-windows-dashboard.png)
 
 ## Why QuietWard
 
@@ -91,6 +85,8 @@ The bridge preserves the separation of authority:
 The projects can also operate independently.
 
 ## Qualification evidence
+
+> **Verification model:** QuietWard does not use GitHub Actions in the current release line. The repository's release validator treats `.github/workflows` as a release blocker, so qualification is performed through the checked-in release gates on supported Windows and Debian hosts. See [`scripts/validate_migrated_release.py`](scripts/validate_migrated_release.py), [`scripts/verify_v06_response_handoff.py`](scripts/verify_v06_response_handoff.py), and [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md).
 
 The current paired QuietWard/Response candidate was promoted to `main` only after the complete joint qualification gate passed on Linux and Windows runners, including:
 
@@ -151,12 +147,23 @@ quietward status --config ~/.config/quietward/config.json --pretty
 
 ## Verify the project
 
+The source currently targets `0.6.0a1`; the latest published prerelease is still 0.5.0-alpha.1. See [current preview notes](docs/releases/v0.6.0-alpha.1.md) and the [synthetic detection gallery](docs/DETECTION_GALLERY.md).
+
 ```bash
 python scripts/validate_migrated_release.py --pretty
 python scripts/verify_v06_response_handoff.py
+python scripts/detection_gallery.py --json
 ```
 
 ## Explore or contribute
+
+To train the optional priority model, supply independent evaluation data:
+
+```bash
+python scripts/train_priority_model.py training.jsonl model.json --evaluation-dataset heldout.jsonl
+```
+
+The trainer rejects overlapping feature vectors and reports evaluation metrics separately from training size. Held-out performance still depends on representative labels and data; synthetic examples do not establish real-world detection accuracy.
 
 - [`docs/TRY_IT.md`](docs/TRY_IT.md) — safe first look
 - [`docs/COMMUNITY_ROADMAP.md`](docs/COMMUNITY_ROADMAP.md) — public product direction

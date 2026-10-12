@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from _storage_clock import StorageClockTestCase
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -12,7 +13,7 @@ from quietward.pipeline import SentinelPipeline
 from quietward.source_aware_lifecycle import SourceAwareIncidentLifecycleRepository
 
 
-class CompactEvidenceReplayTests(unittest.TestCase):
+class CompactEvidenceReplayTests(StorageClockTestCase):
     def test_quiet_reference_cycles_replay_without_snapshot_payload(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
