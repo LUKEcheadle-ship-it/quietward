@@ -17,12 +17,14 @@ The execution-policy bypass applies only to that PowerShell process. The install
 
 The installer does not disable Defender, Firewall, SmartScreen, or Windows Update. It does not enable cloud telemetry or a public listener.
 
+The installer copies the package into its private virtual environment; it does not require a global `quietward` command on PATH. The Windows commands below use the installed Python explicitly and also work from a fresh PowerShell window.
+
 ## Open the dashboard
 
 Use the desktop shortcut, visit `http://127.0.0.1:8765/`, or run:
 
 ```powershell
-quietward open-dashboard --pretty
+& "$env:LOCALAPPDATA\QuietWard\venv\Scripts\python.exe" -m quietward open-dashboard --pretty
 ```
 
 The dashboard is available only on the local computer by default.
@@ -50,7 +52,7 @@ A high severity can represent a real but authorized exposure, such as a delibera
 ## Run diagnostics
 
 ```powershell
-quietward doctor --pretty
+& "$env:LOCALAPPDATA\QuietWard\venv\Scripts\python.exe" -m quietward doctor --pretty
 ```
 
 Diagnostics check the platform, configuration, local database, evidence chain, collector prerequisites, and safety invariants. They do not modify the host.
@@ -84,7 +86,7 @@ Failed-logon collection requires permission to read the Windows Security log. It
 Run:
 
 ```powershell
-quietward doctor --pretty
+& "$env:LOCALAPPDATA\QuietWard\venv\Scripts\python.exe" -m quietward doctor --pretty
 Get-ScheduledTask -TaskName "QuietWard" -ErrorAction SilentlyContinue
 ```
 
@@ -114,4 +116,4 @@ QuietWard is offline-first. Raw process arguments, account names, remote address
 
 ## Getting help
 
-Include the sanitized output from `quietward doctor --pretty`, the QuietWard version, and the operating system version. Never post private keys, the runtime database, raw host logs, or unreviewed qualification reports.
+Include the sanitized output from the installed `doctor --pretty` command, the QuietWard version, and the operating system version. Never post private keys, the runtime database, raw host logs, or unreviewed qualification reports.
