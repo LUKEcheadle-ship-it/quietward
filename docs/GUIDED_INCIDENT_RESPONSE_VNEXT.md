@@ -10,7 +10,7 @@ QuietWard remains responsible for detection, correlation, scoring, evidence prov
 
 ## Phase 1 — Guided response context
 
-Status: implemented; qualification pending.
+Status: implemented and verified in the October 13 paired review. This does not publish a new package or release.
 
 QuietWard handoffs add a versioned, coarse response profile:
 
@@ -25,40 +25,34 @@ The resolution-target handle contains no raw path, PID, address, account identif
 
 ## Phase 2 — One-click incident triage bundle
 
-Status: implemented in the paired Response feature branch; qualification pending.
+Status: implemented in the paired Response source, with Windows/Linux and browser qualification recorded on October 13. A new packaged release is still separate.
 
 Response has an analyst-approved `collect_incident_triage_bundle` action that composes bounded host, process, and platform-supported network diagnostics. Process observations can be converted into endpoint-local opaque evidence handles for later containment without accepting arbitrary process targets.
 
 ## Phase 3 — Complete resolution coverage
 
-Status: in progress and release-blocking.
+Status: the 12 declared category families have tested, human-executed guided recovery and escalation paths. The October 13 paired Response review passed the executable category gate on Windows and Ubuntu. This **does not** mean every category has an automated remediation executor or that a new vNext release has been published.
 
-The first real containment family is implemented in the Response feature branch:
+The existing Response source also contains an evidence-bound process-containment action with explicit analyst approval, same-incident/host/agent provenance, execution-time identity revalidation, and protected-target checks. This is not an arbitrary process termination facility.
 
-- evidence-bound process termination
-- analyst approval required
-- no arbitrary PID
-- same-incident/host/agent provenance required
-- execution-time process identity revalidation
-- protected system processes fail closed
+For the other categories, Response uses named independent approval, concrete category-specific recovery checkpoints, existing external ticket/evidence references, independent fresh verification, and accountable escalation. Operators execute the approved runbooks using their own authorized tools; Response does not execute the notes, validate external artifacts, or mutate the endpoint on their behalf.
 
-The combined release remains blocked until the remaining finding families have real resolution paths, including:
+The broader automatic-executor roadmap remains unimplemented in this release line:
 
 - file quarantine and restore
 - persistence disable/removal
 - network containment
 - identity/session recovery
 - container/workload containment
-- vulnerability remediation verification
+- vulnerability remediation
 - evidence-integrity recovery
 - operational recovery
-- generic-security fallback routing to a concrete resolution family
 
-A category may use a safe typed Response action or a tested guided escalation/recovery workflow when universal automatic mutation would be unsafe. A generic manual-investigation placeholder does not count as complete coverage.
+Generic-security findings must be routed to an actual supported category workflow; a placeholder such as "investigate manually" cannot satisfy resolution coverage. See the companion [guided recovery contract](https://github.com/LUKEcheadle-ship-it/quietward-response/blob/main/docs/GUIDED_RECOVERY_WORKFLOWS.md).
 
 ## Phase 4 — Higher-value detection families
 
-Only after the resolution chain is complete should QuietWard expand detection for additional common endpoint threats:
+Any new finding family must have a tested, concrete Response resolution or guided-recovery path before that detector is released. Potential future detection work includes:
 
 1. ransomware-like rapid file mutation plus recovery/backup tampering
 2. credential-access behavior around browser/session/credential stores
@@ -83,4 +77,6 @@ New detectors should not be released unless Response can resolve or explicitly e
 
 ## Current status
 
-The paired branches remain draft work. The process-containment implementation is not yet locally/jointly qualified, several other resolution families are still incomplete, and the final Response coverage gate is intentionally BLOCKED. The combined update is therefore not release-ready and must remain unreleased.
+The October 13 paired review produced merged QuietWard source `1353dc37bc6e57bdd6fbb74c0e2a737235be33ea` and Response source `c05246e68bf2da9a986f3b64f9a2e01a89028402`. The [Response guided recovery qualification](https://github.com/LUKEcheadle-ship-it/quietward-response/actions/runs/38439060669) passed its 12-category recovery/escalation contracts on Windows and Ubuntu and its real multi-analyst browser check. Those are reviewed-source test receipts, not a signed formal release certificate.
+
+**No paired vNext versioned release or expanded automatic remediation claim is authorized by this document.** Formal release qualification still requires exact-release-source reruns, target-host/install/upgrade/uninstall review, artifact integrity and privacy checks, and an explicit publication decision. QuietWard remains observation-only; the newer recovery workflows are explicitly human-executed and evidence-attested.
