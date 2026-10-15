@@ -12,9 +12,24 @@ cd "${repo_root}"
 # and independent verification of both archives.
 python3 scripts/validate_migrated_release.py --root "${repo_root}" --pretty
 
-# Build once more as the publication candidate and independently verify it.
-python3 scripts/build_release_bundle.py "${temporary}/quietward-v0.5.0-alpha.1-source.zip" --root "${repo_root}"
-python3 scripts/verify_release_bundle.py "${temporary}/quietward-v0.5.0-alpha.1-source.zip"
+# Derive the publication candidate name from the authoritative current source
+# and package metadata; reject mismatched versions before staging any archive.
+release_version="$(python3 - "${repo_root}" <<'PY'
+import sys
+from pathlib import Path
+root = Path(sys.argv[1]).resolve()
+sys.path.insert(0, str(root / "scripts"))
+from release_metadata import release_metadata
+_, display_version = release_metadata(root)
+print(display_version)
+PY
+)"
+archive="${temporary}/quietward-v${release_version}-source.zip"
 
-sha="$(sha256sum "${temporary}/quietward-v0.5.0-alpha.1-source.zip" | awk '{print $1}')"
-printf 'QuietWard v0.5 release validation passed.\nSource bundle SHA-256: %s\n' "${sha}"
+# Independently verify the same versioned release archive as the gate above.
+python3 scripts/build_release_bundle.py "${archive}" --root "${repo_root}"
+python3 scripts/verify_release_bundle.py "${archive}"
+
+sha="$(sha256sum "${archive}" | awk '{print $1}')"
+printf 'QuietWard v%s source validation passed.\nSource bundle SHA-256: %s\n' "${release_version}" "${sha}"
+printf 'Target-host Windows 11 and Debian 12 qualification and public prerelease publication are separate remaining gates.\n'
