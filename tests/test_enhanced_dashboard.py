@@ -113,8 +113,8 @@ class EnhancedDashboardTests(unittest.TestCase):
         self.assertIn("Monitoring coverage", html)
         self.assertIn("Bounded local retention", html)
         self.assertIn("Actions executed", html)
-        self.assertIn("Observation only.", html)
-        self.assertIn("/api/overview?limit=100", html)
+        self.assertIn("Monitoring is observation-only", html)
+        self.assertIn(f"/api/overview?limit={QuietWardDashboardServer.overview_limit}", html)
         self.assertNotIn("Forge" + " Sentinel", html)
         self.assertNotIn("fetch('http", html)
         self.assertNotIn("fetch(\"http", html)
@@ -122,7 +122,7 @@ class EnhancedDashboardTests(unittest.TestCase):
         self.assertNotIn("DELETE", html)
         self.assertNotIn(
             "quarantine",
-            html.casefold().replace("does not quarantine", ""),
+            html.casefold().replace("remediate, quarantine, or alter", ""),
         )
 
 

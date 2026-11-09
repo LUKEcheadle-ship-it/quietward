@@ -12,14 +12,38 @@ This record paraphrases the August 13 report. It contains no intern document, ho
 | Refresh appeared inert | Implemented and verified | Requests disable the control, expose progress/success/failure, reject overlap, preserve prior data, filters, and disclosure state, and use one timer. |
 | macOS support | Rejected with evidence | No Darwin collector, installer, LaunchAgent qualification host, or native runner exists. The platform check remains intact; macOS is not advertised as supported. |
 
+## Served-view correction (November 2026)
+
+The earlier table described the base dashboard renderer. It did not prove that
+these interactions reached the CLI, which selects `QuietWardDashboardServer`.
+That subclass served a separate older HTML implementation. Severity ordering,
+local timestamps and a functioning refresh fetch already existed there; grouping,
+onboarding, reason explanations and detailed refresh feedback did not.
+
+The CLI-selected class now uses the shared renderer with explicit operations
+panel hooks. The runtime performance adapter now supplies grouping/count fields and sets explicit limit/timer attributes rather than rewriting JavaScript strings. Incident lifecycle, coverage and retention remain available.
+`tests/test_served_dashboard_ux.py` fetches actual loopback `GET /` using the
+CLI-selected class and checks both UX and operations content. Its Node-based
+minimal-DOM harness executes that served JavaScript and covers grouping/filter
+counts, escaping, detail explanations, overlapping refresh rejection, failed and
+malformed responses, recovery, preserved filters/disclosures and stale-data
+warnings, onboarding dismissal/reopening/persistence, unavailable local storage,
+and late detail responses after close or a newer selection. This is deterministic
+JavaScript regression evidence, not a real-browser or native-host certification.
+The Node check explicitly skips if Node is unavailable; the served HTTP check
+still runs. Existing HTTP authority/authentication and mutation-rejection tests
+remain applicable. Windows browser and native release qualification must be
+recorded separately against the final public commit; Debian 13 source checks do
+not qualify Debian 12 installation/service behavior.
+
 ## Exact grouping identity
 
 The key is `normalized title | subject category | detector family`. Title normalization lowercases, removes long hash tokens and standalone numbers, and collapses punctuation/whitespace. Subject category uses an explicit prefix (for example `service:`), or the coarse categories `path`, `hash`, and `generic`. Detector family recognizes only `tiny_model_probability`, `base:<rule>`, and `rule:<rule>` forms. The unique finding hash is never a grouping input. Similar titles with different subject or detector categories remain separate.
 
-The dashboard fetches at most 500 newest findings. It always shows displayed raw, matching raw, grouped, and total raw counts, and explicitly labels truncation and the limit.
+The base dashboard fetches at most 500 newest findings. The CLI runtime keeps its existing performance limit of 100 active lifecycle findings and once-per-minute polling; counts identify that active scope and do not label historical findings as undisplayed active results. It always shows displayed raw, matching raw, grouped, and total raw counts, and explicitly labels truncation and the limit.
 
 ## Platform and safety decision
 
-Windows 11 and Debian 12 behavior is unchanged. The dashboard remains GET-only: mutation verbs return 405, and no UI control writes review state or executes proposals. Required invariants remain `actions_executed == 0`, `executable_proposals == 0`, loopback binding, no cloud upload, and no public listener.
+No installer or collector behavior is changed by this dashboard fix. The dashboard remains GET-only: mutation verbs return 405, and no UI control writes review state or executes proposals. Required invariants remain `actions_executed == 0`, `executable_proposals == 0`, loopback binding, no cloud upload, and no public listener.
 
 The private archive's only newer-looking qualification changes referenced event kinds absent from the canonical public contract, so they were rejected as incompatible. Its remaining path differences revive retired branding and were also rejected.

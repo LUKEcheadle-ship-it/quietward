@@ -30,7 +30,7 @@ class DashboardPerformanceTests(unittest.TestCase):
             with SentinelStore(settings) as store:
                 with mock.patch.object(store, "verify_evidence_chain", side_effect=AssertionError("full verifier should not run")):
                     status = cached_evidence_status(store); overview = fast_overview(store, 10)
-            self.assertTrue(status["valid"]); self.assertTrue(status["cached_for_dashboard"]); self.assertTrue(overview["summary"]["evidence_chain"]["cached_for_dashboard"]); self.assertEqual(overview["actions_executed"], 0)
+            self.assertTrue(status["valid"]); self.assertTrue(status["cached_for_dashboard"]); self.assertTrue(overview["summary"]["evidence_chain"]["cached_for_dashboard"]); self.assertEqual(overview["actions_executed"], 0); self.assertEqual(overview["finding_groups"], []); self.assertEqual(overview["raw_finding_count"], 0); self.assertEqual(overview["finding_scope"], "active lifecycle findings")
 
     def test_chain_head_change_invalidates_recent_cache(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -55,7 +55,7 @@ class DashboardPerformanceTests(unittest.TestCase):
 
     def test_runtime_dashboard_polls_once_per_minute(self) -> None:
         install_dashboard_performance(); html = QuietWardDashboardServer._html()
-        self.assertIn("setInterval(refresh,60000)", html); self.assertNotIn("setInterval(refresh,15000)", html); self.assertIn("/api/overview?limit=100", html); self.assertNotIn("/api/overview?limit=200", html); self.assertIn("QuietWard", html)
+        self.assertIn("setInterval(()=>load('automatic'),60000)", html); self.assertNotIn("setInterval(()=>load('automatic'),15000)", html); self.assertIn("/api/overview?limit=100", html); self.assertNotIn("/api/overview?limit=200", html); self.assertIn("QuietWard", html)
 
 
 if __name__ == "__main__": unittest.main()

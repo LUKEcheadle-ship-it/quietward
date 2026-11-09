@@ -144,6 +144,9 @@ def _is_private(bind: str) -> bool:
 
 
 class DashboardServer:
+    overview_limit = 500
+    refresh_interval_ms = 15000
+
     def __init__(self, settings: DashboardSettings, storage: StorageSettings) -> None:
         if not _is_loopback(settings.bind):
             if not settings.allow_private_network_bind or not _is_private(settings.bind):
@@ -380,7 +383,15 @@ class DashboardServer:
         }
 
     @staticmethod
-    def _html() -> str:
+    def _operations_panels() -> str:
+        return ""
+
+    @staticmethod
+    def _operations_script() -> str:
+        return "function renderOperations(d) {}"
+
+    @classmethod
+    def _html(cls) -> str:
         return r"""<!doctype html>
 <html lang="en">
 <head>
@@ -420,13 +431,15 @@ th{color:var(--muted);font-weight:600}
 .refresh-status{min-height:18px}.group{border:1px solid var(--line);border-radius:12px;margin:10px 0;background:var(--panel2)}.group>summary{cursor:pointer;padding:14px;list-style-position:inside}.group>summary:focus-visible,button:focus-visible,select:focus-visible{outline:3px solid var(--accent);outline-offset:2px}.group-body{padding:0 14px 14px}.count-note{margin:8px 0;color:var(--muted)}details.technical{margin-top:12px}details.technical pre{white-space:pre-wrap;overflow-wrap:anywhere}
 @media(max-width:900px){.grid{grid-template-columns:repeat(2,1fr)}.help{grid-template-columns:1fr}table{display:block;overflow:auto}}
 @media(max-width:560px){.grid{grid-template-columns:1fr}.brand{align-items:flex-start;flex-direction:column}.wrap{padding:14px}}
+/* Operations panels share the findings view and refresh lifecycle. */
+.operations-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}.domain,.meter{padding:12px;border:1px solid var(--line);border-radius:10px}.bar{height:6px;background:var(--line);margin-top:7px}.fill{height:100%;background:var(--accent)}.warnfill{background:var(--warn)}
 </style>
 </head>
 <body>
 <header><div class="wrap brand"><div><h1>QuietWard</h1><p>Local, read-only security monitoring</p></div><div class="header-actions"><button id="help" aria-controls="welcome">Help</button><div id="status" class="pill" aria-live="polite">Loading status…</div></div></div></header>
 <main class="wrap">
 <section id="welcome" class="panel" aria-labelledby="welcome-title">
-<div class="welcome-head"><div><h2 id="welcome-title">How to use QuietWard</h2><p class="small">QuietWard observes and explains security signals. It does not automatically remediate, quarantine, or alter this computer.</p></div><button id="dismiss-help" aria-label="Dismiss welcome panel">Dismiss</button></div>
+<div class="welcome-head"><div><h2 id="welcome-title" tabindex="-1">How to use QuietWard</h2><p class="small">QuietWard observes and explains security signals. It does not automatically remediate, quarantine, or alter this computer.</p></div><button id="dismiss-help" aria-label="Dismiss welcome panel">Dismiss</button></div>
 <div class="help">
 <div><strong>1. Start with critical and high findings</strong><span class="small">They appear first. Expand a group to review each original finding and open its evidence.</span></div>
 <div><strong>2. Review; don’t expect automatic fixes</strong><span class="small">Use the command-line review workflow for expected activity. The dashboard remains observation-only.</span></div>
@@ -452,6 +465,7 @@ th{color:var(--muted);font-weight:600}
 <div id="findings"></div>
 </section>
 
+<!-- operations panels -->
 <section class="panel">
 <h2>Collector health and errors</h2>
 <div id="collector"></div>
@@ -464,7 +478,8 @@ th{color:var(--muted);font-weight:600}
 <div id="drawer" class="drawer"><div class="drawer-card"><div class="drawer-head"><h2 id="drawer-title">Finding</h2><button id="close">Close</button></div><div id="drawer-body"></div></div></div>
 
 <script>
-const state={data:null,loading:false,request:0,expanded:new Set(),timer:null};
+const state={data:null,loading:false,request:0,detailRequest:0,refreshError:null,expanded:new Set(),timer:null};
+/* operations script */
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const normalizeSeverity=s=>String(s||'').toLowerCase()==='mid'?'medium':String(s||'unknown').toLowerCase();
 const sevClass=s=>'sev sev-'+esc(normalizeSeverity(s));
@@ -497,7 +512,7 @@ function render(){
  const groups=(d.finding_groups||[]).map(g=>({...g,findings:(g.findings||[]).filter(f=>(!sev||normalizeSeverity(f.severity)===sev)&&reviewMatches(f,review))})).filter(g=>g.findings.length);
  const box=document.getElementById('findings');
  const visible=groups.reduce((n,g)=>n+g.findings.length,0),total=d.raw_finding_count??findings.length;
- document.getElementById('count-note').textContent=groups.length+' group'+(groups.length===1?'':'s')+' · '+visible+' matching raw finding'+(visible===1?'':'s')+' · '+total+' raw total'+(d.findings_truncated?' (showing newest '+d.displayed_finding_count+'; display limit '+d.display_limit+')':'');
+ document.getElementById('count-note').textContent=groups.length+' group'+(groups.length===1?'':'s')+' · '+visible+' matching raw finding'+(visible===1?'':'s')+' · '+total+' raw total'+(d.finding_scope?' ('+d.finding_scope+')':'')+(d.findings_truncated?' (showing newest '+d.displayed_finding_count+'; display limit '+d.display_limit+')':'');
  if(!groups.length){box.innerHTML='<div class="empty">No findings match these filters.</div>'}
  else{
   box.innerHTML=groups.map(g=>{const highest=g.findings[0],states=[...new Set(g.findings.map(f=>(f.review||{}).state||'open'))],newest=g.findings.reduce((a,f)=>new Date(f.created_at)>new Date(a.created_at)?f:a,g.findings[0]);return '<details class="group" data-group="'+esc(g.group_key)+'" '+(state.expanded.has(g.group_key)?'open':'')+'><summary><strong>'+esc(g.title)+' — '+g.findings.length+' finding'+(g.findings.length===1?'':'s')+'</strong><br><span class="'+sevClass(highest.severity)+'">Highest: '+esc(normalizeSeverity(highest.severity))+'</span> · '+timeHtml(newest.created_at)+' · <span class="state">'+esc(states.length===1?states[0]:'Mixed: '+states.sort().join(', '))+'</span><br><span class="small">'+esc(g.explanation||'Review the contained evidence.')+'</span></summary><div class="group-body"><table><thead><tr><th>Severity</th><th>Finding</th><th>Why it matters</th><th>State</th><th></th></tr></thead><tbody>'+g.findings.map(f=>'<tr><td><span class="'+sevClass(f.severity)+'">'+esc(normalizeSeverity(f.severity))+'</span><br><span class="small">Score '+esc(f.score)+'</span></td><td><strong>'+esc(f.title||f.finding_id)+'</strong><br><span class="small">'+timeHtml(f.created_at)+'</span></td><td>'+esc(f.summary||'No summary')+'</td><td><span class="state">'+esc((f.review||{}).state||'open')+'</span></td><td><button data-id="'+esc(f.finding_id)+'">Details</button></td></tr>').join('')+'</tbody></table></div></details>'}).join('');
@@ -507,40 +522,46 @@ function render(){
  const c=d.collector||{};
  document.getElementById('collector').innerHTML=c.version?'<div><strong>'+esc(c.version)+'</strong><br><span class="small">Last observation: '+timeHtml(c.observed_at)+'</span></div>':'<div class="empty">No collector snapshot yet.</div>';
  document.getElementById('collector-errors').innerHTML=errors.length?errors.map(e=>'<div class="error">'+esc(e)+'</div>').join(''):'<div class="good">No collector errors reported in the latest snapshot.</div>';
+ renderOperations(d);
+ if(state.refreshError){status.textContent='Refresh failed — showing previous data';status.className='pill bad'}
  const md=c.microsoft_defender; document.getElementById('defender').innerHTML=md?'<div class="panel"><strong>Microsoft Defender evidence</strong><p>Antivirus: '+(md.antivirus_enabled?'enabled':'disabled')+' · Real-time protection: '+(md.real_time_protection_enabled?'enabled':'disabled')+' · Active threats reported: '+esc(md.active_threat_count)+'</p><span class="small">This is status reported by Microsoft Defender, not QuietWard’s own malware verdict.</span></div>':'';
 }
 async function load(source='automatic'){
- if(state.loading)return false;state.loading=true;const request=++state.request,button=document.getElementById('refresh'),message=document.getElementById('refresh-status');
+ if(state.loading)return false;const previous=state.data;state.loading=true;const request=++state.request,button=document.getElementById('refresh'),message=document.getElementById('refresh-status');
  button.disabled=true;button.textContent='Refreshing…';message.textContent=source==='manual'?'Refreshing…':'';
- try{const r=await fetch('/api/overview?limit=500',{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);const next=await r.json();if(!next||typeof next!=='object'||!Array.isArray(next.findings)||!Array.isArray(next.finding_groups))throw new Error('Malformed dashboard response');if(request!==state.request)return false;state.data=next;render();const t=timestamp(new Date().toISOString());message.innerHTML='Last refreshed '+timeHtml(new Date().toISOString());return true}
- catch(e){const s=document.getElementById('status');s.textContent='Refresh failed — showing previous data';s.className='pill bad';message.innerHTML='<span class="bad">Could not refresh: '+esc(e.message)+'. Previously displayed data was preserved.</span>';return false}
+ try{const r=await fetch('/api/overview?limit=__OVERVIEW_LIMIT__',{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);const next=await r.json();if(!next||typeof next!=='object'||!Array.isArray(next.findings)||!Array.isArray(next.finding_groups))throw new Error('Malformed dashboard response');if(request!==state.request)return false;state.data=next;state.refreshError=null;render();message.innerHTML='Last refreshed '+timeHtml(new Date().toISOString());return true}
+ catch(e){state.data=previous;state.refreshError=e.message;if(previous)render();const s=document.getElementById('status');s.textContent='Refresh failed — showing previous data';s.className='pill bad';message.innerHTML='<span class="bad">Could not refresh: '+esc(e.message)+'. Previously displayed data was preserved.</span>';return false}
  finally{if(request===state.request){state.loading=false;button.disabled=false;button.textContent='Refresh'}}
 }
 async function openFinding(id){
+ const request=++state.detailRequest;
  const drawer=document.getElementById('drawer'),body=document.getElementById('drawer-body');drawer.classList.add('open');body.innerHTML='<div class="empty">Loading…</div>';
  try{
   const r=await fetch('/api/finding?id='+encodeURIComponent(id),{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);
-  const b=await r.json(),f=b.finding||{},review=b.review||{},proposals=b.proposals||[],events=b.events||[];
+  const b=await r.json();if(request!==state.detailRequest)return;
+  const f=b.finding||{},review=b.review||{},proposals=b.proposals||[],events=b.events||[];
   document.getElementById('drawer-title').textContent=f.title||'Finding';
   body.innerHTML='<p><span class="'+sevClass(f.severity)+'">'+esc(f.severity)+'</span> · score '+esc(f.score)+' · '+esc(review.state||'open')+'</p>'+ 
    '<p>'+esc(f.summary||'')+'</p>'+ 
    '<h3>Why QuietWard raised this</h3><ul>'+(((f.reason_explanations||f.reasons||[]).map(x=>'<li>'+esc(x)+'</li>').join(''))||'<li>No reasons recorded.</li>')+'</ul><details class="technical"><summary>Raw Event Log</summary><pre>'+esc((f.reasons||[]).join('\n')||'No raw reasons recorded.')+'</pre></details>'+
    '<h3>Recommended response</h3>'+ (proposals.length?proposals.map(p=>'<div class="panel"><strong>'+esc(p.action_type)+'</strong><p>'+esc(p.reason)+'</p><span class="small">Approval required: '+esc(p.requires_approval)+' · Executable now: '+esc(p.executable_in_current_mode)+'</span></div>').join(''):'<p class="small">No remediation proposal was generated. Review the evidence before changing the system.</p>')+
    '<h3>Supporting events</h3><p class="small">'+events.length+' event(s). Raw sensitive identities are not displayed.</p>'+ (events.length?'<ul>'+events.map(e=>'<li><strong>'+esc(e.kind||'security event')+'</strong> observed by '+esc(e.source||'QuietWard')+' at '+timeHtml(e.observed_at)+'</li>').join('')+'</ul>':'<p class="small">No supporting events are available.</p>');
- }catch(e){body.innerHTML='<div class="error">'+esc(e.message)+'</div>'}
+ }catch(e){if(request===state.detailRequest)body.innerHTML='<div class="error">'+esc(e.message)+'</div>'}
 }
 document.getElementById('refresh').onclick=()=>load('manual');
 document.getElementById('severity').onchange=render;
 document.getElementById('review').onchange=render;
-document.getElementById('close').onclick=()=>document.getElementById('drawer').classList.remove('open');
-document.getElementById('drawer').onclick=e=>{if(e.target.id==='drawer')e.currentTarget.classList.remove('open')};
-const welcome=document.getElementById('welcome');if(localStorage.getItem('quietward-welcome-dismissed')==='1')welcome.hidden=true;
-document.getElementById('dismiss-help').onclick=()=>{welcome.hidden=true;localStorage.setItem('quietward-welcome-dismissed','1');document.getElementById('help').focus()};
-document.getElementById('help').onclick=()=>{welcome.hidden=false;localStorage.removeItem('quietward-welcome-dismissed');document.getElementById('welcome-title').focus?.()};
-load('initial');if(!state.timer)state.timer=setInterval(()=>load('automatic'),15000);
+function closeFinding(){state.detailRequest++;document.getElementById('drawer').classList.remove('open')}
+document.getElementById('close').onclick=closeFinding;
+document.getElementById('drawer').onclick=e=>{if(e.target.id==='drawer')closeFinding()};
+function helpPreference(action){try{return localStorage[action]('quietward-welcome-dismissed','1')}catch(e){return null}}
+const welcome=document.getElementById('welcome');if(helpPreference('getItem')==='1')welcome.hidden=true;
+document.getElementById('dismiss-help').onclick=()=>{welcome.hidden=true;helpPreference('setItem');document.getElementById('help').focus()};
+document.getElementById('help').onclick=()=>{welcome.hidden=false;helpPreference('removeItem');document.getElementById('welcome-title').focus?.()};
+load('initial');if(!state.timer)state.timer=setInterval(()=>load('automatic'),__REFRESH_INTERVAL__);
 </script>
 </body>
-</html>"""
+</html>""".replace("__OVERVIEW_LIMIT__", str(cls.overview_limit)).replace("__REFRESH_INTERVAL__", str(cls.refresh_interval_ms)).replace("<!-- operations panels -->", cls._operations_panels()).replace("/* operations script */", cls._operations_script())
 
     @staticmethod
     def _headers(

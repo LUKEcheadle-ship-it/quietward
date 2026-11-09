@@ -4,6 +4,7 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
+from .dashboard import finding_sort_key, group_findings
 from .enhanced_dashboard import QuietWardDashboardServer
 from .lifecycle_repository import IncidentLifecycleRepository
 from .operational_findings import current_findings
@@ -12,7 +13,6 @@ from .storage import SentinelStore
 
 
 _INSTALLED = False
-_ORIGINAL_HTML = QuietWardDashboardServer._html
 
 
 def _parse_time(value: object) -> datetime | None:
@@ -141,9 +141,19 @@ def fast_overview(store: SentinelStore, limit: int) -> dict[str, Any]:
     summary["operational_findings"] = len(findings)
     summary["findings_by_severity"] = severities
     lifecycle = IncidentLifecycleRepository(store.connection)
+    total_active = int(store.connection.execute(
+        "SELECT COUNT(*) FROM incident_lifecycle l JOIN findings f "
+        "ON f.finding_id=l.finding_id WHERE l.active=1"
+    ).fetchone()[0])
     return {
         "summary": summary,
-        "findings": findings,
+        "findings": sorted(findings, key=finding_sort_key),
+        "finding_groups": group_findings(findings),
+        "raw_finding_count": total_active,
+        "displayed_finding_count": len(findings),
+        "display_limit": limit,
+        "findings_truncated": total_active > len(findings),
+        "finding_scope": "active lifecycle findings",
         "events": store.recent_events(min(limit, 100)),
         "collector": collector,
         "collector_errors": collector_errors,
@@ -159,22 +169,11 @@ def fast_overview(store: SentinelStore, limit: int) -> dict[str, Any]:
     }
 
 
-def _performance_html() -> str:
-    return (
-        _ORIGINAL_HTML()
-        .replace("/api/overview?limit=200", "/api/overview?limit=100")
-        .replace("setInterval(refresh,15000)", "setInterval(refresh,60000)")
-        .replace(
-            "const safe=cov&&cov.resolution_safe===true",
-            "const safe=cov&&(cov.operationally_healthy??cov.resolution_safe)===true",
-        )
-    )
-
-
 def install_dashboard_performance() -> None:
     global _INSTALLED
     if _INSTALLED:
         return
     QuietWardDashboardServer._overview = staticmethod(fast_overview)
-    QuietWardDashboardServer._html = staticmethod(_performance_html)
+    QuietWardDashboardServer.overview_limit = 100
+    QuietWardDashboardServer.refresh_interval_ms = 60000
     _INSTALLED = True
