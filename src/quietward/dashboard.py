@@ -432,7 +432,7 @@ th{color:var(--muted);font-weight:600}
 @media(max-width:900px){.grid{grid-template-columns:repeat(2,1fr)}.help{grid-template-columns:1fr}table{display:block;overflow:auto}}
 @media(max-width:560px){.grid{grid-template-columns:1fr}.brand{align-items:flex-start;flex-direction:column}.wrap{padding:14px}}
 /* Operations panels share the findings view and refresh lifecycle. */
-.operations-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}.domain,.meter{padding:12px;border:1px solid var(--line);border-radius:10px}.bar{height:6px;background:var(--line);margin-top:7px}.fill{height:100%;background:var(--accent)}.warnfill{background:var(--warn)}
+.operations-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}.domain,.meter{padding:12px;border:1px solid var(--line);border-radius:10px}.domain strong{display:block;margin-bottom:4px}.domain span{display:block;font-size:12px;color:var(--muted)}.bar{height:6px;background:var(--line);margin-top:7px}.fill{height:100%;background:var(--accent)}.warnfill{background:var(--warn)}
 </style>
 </head>
 <body>

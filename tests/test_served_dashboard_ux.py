@@ -48,6 +48,9 @@ class ServedDashboardUXTests(unittest.TestCase):
                        'refresh-status', 'Incident lifecycle', 'Monitoring coverage',
                        'Bounded local retention', '/api/overview?limit=100'):
             self.assertIn(marker, html)
+        # Coverage names and state/reason text must occupy separate lines.
+        self.assertRegex(html, r'\.domain strong\{[^}]*display:block;[^}]*margin-bottom:4px')
+        self.assertRegex(html, r'\.domain span\{[^}]*display:block')
         self.assertNotIn('v0.5 development dashboard', html)
         self.assertEqual(html.count('setInterval('), 1)
         self.assertLess(html.index('id="welcome"'), html.index('id="findings"'))
