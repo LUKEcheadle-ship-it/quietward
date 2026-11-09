@@ -13,7 +13,7 @@ authors = [{name = "Luke Cheadle"}]
 dependencies = []
 
 [project.optional-dependencies]
-release = ["pytest>=8,<9"]
+release = ["pytest>=9.0.3,<10"]
 
 [project.scripts]
 quietward = "quietward.console:main"
