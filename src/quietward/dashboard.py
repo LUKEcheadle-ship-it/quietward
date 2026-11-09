@@ -138,7 +138,9 @@ def _is_private(bind: str) -> bool:
         address = ipaddress.ip_address(bind)
     except ValueError:
         return False
-    return address.is_private or address in ipaddress.ip_network("100.64.0.0/10")
+    return not address.is_unspecified and (
+        address.is_private or address in ipaddress.ip_network("100.64.0.0/10")
+    )
 
 
 class DashboardServer:
@@ -164,10 +166,21 @@ class DashboardServer:
             def log_message(self, format: str, *args: object) -> None:
                 return
 
+            def _check_host(self) -> bool:
+                if server_self._valid_host(self):
+                    return True
+                self.close_connection = True
+                server_self._json(self, HTTPStatus.BAD_REQUEST,
+                                  {"error": "invalid host", "actions_executed": 0})
+                return False
+
             def do_GET(self) -> None:
-                server_self._handle(self)
+                if self._check_host():
+                    server_self._handle(self)
 
             def do_POST(self) -> None:
+                if not self._check_host():
+                    return
                 try:
                     length = min(65536, max(0, int(self.headers.get("Content-Length", "0"))))
                 except ValueError:
@@ -223,12 +236,32 @@ class DashboardServer:
     def serve_forever(self) -> None:
         self.httpd.serve_forever()
 
+    def _valid_host(self, handler: BaseHTTPRequestHandler) -> bool:
+        """Accept only the listener authority, never an arbitrary DNS alias."""
+        values = handler.headers.get_all("Host", [])
+        if len(values) != 1:
+            return False
+        host, port = self.address
+        names = {host.lower()}
+        if _is_loopback(self.settings.bind):
+            names.add("localhost")
+        authorities = set()
+        for name in names:
+            authority = f"[{name}]" if ":" in name else name
+            authorities.add(f"{authority}:{port}")
+            if port == 80:
+                authorities.add(authority)
+        return values[0].lower() in authorities
+
     def _authorized(self, handler: BaseHTTPRequestHandler) -> bool:
         if self.token is None:
             return True
-        supplied = handler.headers.get("Authorization", "")
+        values = handler.headers.get_all("Authorization", [])
+        if len(values) != 1:
+            return False
+        supplied = values[0]
         return supplied.startswith("Bearer ") and hmac.compare_digest(
-            supplied[7:], self.token
+            supplied[7:].encode("utf-8"), self.token.encode("utf-8")
         )
 
     def _handle(self, handler: BaseHTTPRequestHandler) -> None:

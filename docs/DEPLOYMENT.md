@@ -45,7 +45,9 @@ QuietWard never invokes a scanner updater. Signature and database updates remain
 
 ## Dashboard
 
-The dashboard binds to `127.0.0.1` by default. Access it locally or through an authenticated tunnel. Private-network binding requires `allow_private_network_bind: true` and a private token file containing at least 24 characters. Public binding is rejected.
+The dashboard binds to `127.0.0.1` by default. Access it locally or through an authenticated tunnel. Private-network binding requires `allow_private_network_bind: true` and a private token file containing at least 24 characters. Public and wildcard (`0.0.0.0` or `::`) bindings are rejected; use a specific private interface address.
+
+Dashboard requests must use the listener IP and port (or `localhost` and the same port for loopback listeners). Custom DNS aliases are not accepted. An authenticated tunnel or reverse proxy must preserve that upstream Host authority; forwarding an external hostname is rejected. Configured bearer authentication remains required independently of the Host check.
 
 Authentication-event collection requires the private `collector.privacy_identity_key_path` key. Installers create this key once without network access and never replace a valid existing key. If it is missing or invalid, identity persistence fails closed rather than storing usernames.
 

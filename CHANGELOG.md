@@ -2,6 +2,8 @@
 
 ## Unreleased review fixes
 
+- Validate dashboard request authorities before routing and reject ambiguous bearer credentials.
+
 - Cross-check current source/package versions and require current release notes in release verification.
 - Freeze storage time only in August fixture tests; keep real retention behavior unchanged.
 - Require a disjoint held-out dataset for training CLI evaluation and validate labels/features.
