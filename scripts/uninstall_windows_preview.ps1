@@ -21,29 +21,39 @@ function Stop-QuietWardProcess {
     if (-not (Test-Path $LockPath)) {
         return
     }
-    $RawPid = (Get-Content -LiteralPath $LockPath -Raw -ErrorAction SilentlyContinue).Trim()
+    $LockContent = Get-Content -LiteralPath $LockPath -Raw -ErrorAction Stop
+    if ([string]::IsNullOrWhiteSpace($LockContent)) {
+        throw "The QuietWard lock is empty; refusing to remove a possibly active runtime."
+    }
+    $RawPid = $LockContent.Trim()
     $ParsedPid = 0
-    if (-not [int]::TryParse($RawPid, [ref]$ParsedPid)) {
-        return
+    if (-not [int]::TryParse($RawPid, [ref]$ParsedPid) -or $ParsedPid -le 0) {
+        throw "The QuietWard lock does not contain a valid process ID; refusing to remove the runtime."
     }
     $Process = Get-Process -Id $ParsedPid -ErrorAction SilentlyContinue
     if ($null -eq $Process) {
         return
     }
-    $ExpectedPrefix = (Join-Path $VenvDir "Scripts").ToLowerInvariant()
+    $ExpectedExecutable = Join-Path $VenvDir "Scripts\python.exe"
     $ProcessPath = ""
     try {
+        # Pin the process identity before examining the executable path.
+        $ProcessHandle = $Process.Handle
+        if ($null -eq $ProcessHandle -or $ProcessHandle -eq [IntPtr]::Zero) {
+            throw "The QuietWard process handle could not be verified."
+        }
         $ProcessPath = $Process.Path
     } catch {}
     if ([string]::IsNullOrWhiteSpace($ProcessPath)) {
-        Write-Warning "QuietWard process $ParsedPid is running but its executable path could not be verified; it was not stopped."
-        return
+        throw "QuietWard process $ParsedPid could not be verified; refusing to stop it or remove the runtime."
     }
-    if (-not $ProcessPath.ToLowerInvariant().StartsWith($ExpectedPrefix)) {
-        Write-Warning "Lock PID $ParsedPid does not belong to the QuietWard virtual environment; it was not stopped."
-        return
+    if (-not [string]::Equals($ProcessPath, $ExpectedExecutable, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Lock PID $ParsedPid does not belong to the QuietWard virtual environment; refusing to stop it or remove the runtime."
     }
-    Stop-Process -Id $ParsedPid -Force
+    Stop-Process -InputObject $Process -Force -ErrorAction Stop
+    if (-not $Process.WaitForExit(5000)) {
+        throw "The QuietWard process did not exit; refusing to remove the active runtime."
+    }
 }
 
 $Task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue

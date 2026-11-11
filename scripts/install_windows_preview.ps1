@@ -72,21 +72,35 @@ function Stop-InstalledQuietWard {
     if ($null -ne $ExistingTask) { Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue }
     $LockPath = Join-Path $StateDir "service.lock"
     if (-not (Test-Path $LockPath)) { return }
-    $LockContent = Get-Content -LiteralPath $LockPath -Raw -ErrorAction SilentlyContinue
-    if ([string]::IsNullOrWhiteSpace($LockContent)) { return }
+    $LockContent = Get-Content -LiteralPath $LockPath -Raw -ErrorAction Stop
+    if ([string]::IsNullOrWhiteSpace($LockContent)) {
+        throw "The QuietWard lock is empty; refusing to replace a possibly active runtime."
+    }
     $RawPid = $LockContent.Trim()
     $ParsedPid = 0
-    if (-not [int]::TryParse($RawPid, [ref]$ParsedPid)) { return }
+    if (-not [int]::TryParse($RawPid, [ref]$ParsedPid) -or $ParsedPid -le 0) {
+        throw "The QuietWard lock does not contain a valid process ID; refusing to replace the runtime."
+    }
     $Process = Get-Process -Id $ParsedPid -ErrorAction SilentlyContinue
     if ($null -eq $Process) { return }
     $ProcessPath = ""
-    try { $ProcessPath = $Process.Path } catch {}
-    $ExpectedPrefix = (Join-Path $VenvDir "Scripts").ToLowerInvariant()
-    if ([string]::IsNullOrWhiteSpace($ProcessPath) -or -not $ProcessPath.ToLowerInvariant().StartsWith($ExpectedPrefix)) {
+    try {
+        # Retain the process handle before inspecting its executable, rather than
+        # stopping a potentially reused numeric PID after the path check.
+        $ProcessHandle = $Process.Handle
+        if ($null -eq $ProcessHandle -or $ProcessHandle -eq [IntPtr]::Zero) {
+            throw "The QuietWard process handle could not be verified."
+        }
+        $ProcessPath = $Process.Path
+    } catch {}
+    $ExpectedExecutable = Join-Path $VenvDir "Scripts\python.exe"
+    if ([string]::IsNullOrWhiteSpace($ProcessPath) -or -not [string]::Equals($ProcessPath, $ExpectedExecutable, [StringComparison]::OrdinalIgnoreCase)) {
         throw "The QuietWard lock references a process outside the QuietWard virtual environment; refusing to stop it."
     }
-    Stop-Process -Id $ParsedPid -Force
-    $Process.WaitForExit(5000) | Out-Null
+    Stop-Process -InputObject $Process -Force -ErrorAction Stop
+    if (-not $Process.WaitForExit(5000)) {
+        throw "The QuietWard process did not exit; refusing to replace the active runtime."
+    }
 }
 
 function Write-RandomKey([string]$Path) {

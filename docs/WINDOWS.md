@@ -95,3 +95,18 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\uninstall_wind
 ## Safety
 
 QuietWard does not disable Defender, Firewall, SmartScreen or Windows Update. It does not expose the dashboard outside loopback, upload telemetry, invoke arbitrary scripts, quarantine files, terminate processes or modify the firewall.
+
+### Upgrade and removal process checks
+
+Upgrade and uninstall refuse to replace/remove the runtime when the service lock
+is unreadable, empty or invalid, its live process cannot be inspected, its
+executable is not the exact installed `venv\Scripts\python.exe`, or the inspected
+process does not exit within five seconds. A stale PID with no live process does
+not block removal. Do not clear an ambiguous lock to bypass these checks; first
+establish whether the service is still running.
+
+Run `powershell -NoProfile -File tests/test_windows_lifecycle.ps1` (or `pwsh`)
+to exercise the production stop functions with fake process/filesystem APIs.
+These function tests do not install the service, alter ACLs or scheduled tasks,
+or certify Windows 11 installation, reboot, upgrade or uninstall. The native
+target-host gates remain separate, and this release line does not use GitHub Actions.
