@@ -68,3 +68,31 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\qualify_window
 ```
 
 Do not enable containment. QuietWard’s released safety boundary remains observation-only with zero executable remediation proposals.
+
+
+### Windows installer package replacement
+
+The preview installer validates a lock-file process against the canonical
+`venv/Scripts/python.exe` path before stopping it. Prefix lookalikes, other
+executables, and paths traversing symlinks or reparse points are rejected. It
+also refuses to replace the package if the process does not exit in time.
+
+Package replacement stages a complete copy beside the installed package, keeps
+the old directory as `.quietward-package-backup`, and checks the new package
+with the virtual environment's isolated interpreter. Copy, promotion, or CLI
+validation failures restore the previous package when filesystem operations
+permit. No package-helper operation changes configuration, evidence, keys or
+service registration. This is package rollback, not an all-or-nothing rollback
+of the entire installer and its later configuration/task changes.
+
+Two directory renames are not a crash-atomic exchange. If interrupted, or if
+restoration/cleanup fails, a `.quietward-package-lock` and possibly the backup
+and staging directories remain in site-packages. A later installer refuses to
+overwrite the lock or backup. Preserve these artifacts and inspect the installed
+package and retained backup before manually recovering; do not blindly delete
+these protections or run another installer concurrently.
+
+The filesystem and isolated-interpreter regression tests run without a native
+Windows installer. Windows junction/ACL/Task Scheduler, locked-file failure
+injection and full install/upgrade/uninstall qualification remain separate
+native checks. Debian 12 service qualification is also separate.

@@ -81,12 +81,21 @@ function Stop-InstalledQuietWard {
     if ($null -eq $Process) { return }
     $ProcessPath = ""
     try { $ProcessPath = $Process.Path } catch {}
-    $ExpectedPrefix = (Join-Path $VenvDir "Scripts").ToLowerInvariant()
-    if ([string]::IsNullOrWhiteSpace($ProcessPath) -or -not $ProcessPath.ToLowerInvariant().StartsWith($ExpectedPrefix)) {
-        throw "The QuietWard lock references a process outside the QuietWard virtual environment; refusing to stop it."
+    if ([string]::IsNullOrWhiteSpace($ProcessPath)) {
+        throw "Cannot identify the locked process; refusing to stop it."
+    }
+    $GuardArguments = @($Python.Prefix) + @(
+        (Join-Path $RepoRoot "scripts\installer_package.py"), "validate-process",
+        "--venv", $VenvDir, "--process", $ProcessPath
+    )
+    & $Python.Exe @GuardArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "The lock does not identify the installed Python executable; refusing to stop it."
     }
     Stop-Process -Id $ParsedPid -Force
-    $Process.WaitForExit(5000) | Out-Null
+    if (-not $Process.WaitForExit(5000)) {
+        throw "The installed Python process did not exit; refusing package replacement."
+    }
 }
 
 function Write-RandomKey([string]$Path) {
@@ -120,8 +129,8 @@ Write-RandomKey $PrivacyKey
 Write-RandomKey $EvidenceKey
 
 Write-Step "Creating the isolated Python environment"
-Stop-InstalledQuietWard
 $Python = Resolve-Python
+Stop-InstalledQuietWard
 if (-not (Test-Path (Join-Path $VenvDir "Scripts\python.exe"))) {
     $VenvArguments = @($Python.Prefix) + @("-m", "venv", $VenvDir)
     & $Python.Exe $VenvArguments
@@ -140,13 +149,13 @@ if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($SitePackages)) {
     throw "Could not locate the virtual environment package directory."
 }
 $InstalledPackage = Join-Path $SitePackages "quietward"
-if (Test-Path $InstalledPackage) {
-    Remove-Item -LiteralPath $InstalledPackage -Recurse -Force
-}
-Copy-Item -LiteralPath (Join-Path $RepoRoot "src\quietward") -Destination $InstalledPackage -Recurse -Force
-& $VenvPython -m quietward --help | Out-Null
+# Keep the previous package until the replacement passes its isolated CLI check.
+# An interrupted transaction is preserved for inspection, never overwritten.
+& $VenvPython (Join-Path $RepoRoot "scripts\installer_package.py") replace-package `
+    --source (Join-Path $RepoRoot "src\quietward") `
+    --destination $InstalledPackage --python $VenvPython
 if ($LASTEXITCODE -ne 0) {
-    throw "QuietWard installation failed."
+    throw "QuietWard package replacement failed. The helper restores the previous package on caught failures; inspect any preserved transaction before retrying."
 }
 
 # An installer-authored package replacement is expected. Re-baseline self-integrity
